@@ -19,7 +19,7 @@ parser.add_argument('-ddu', '--dest-db-user', help='what user will use the datab
 parser.add_argument('-sdp', '--source-db-pass', nargs='?',
                     help='what the password for the user currently is, defaults to prompt', const='prompt',
                     required=True)
-parser.add_argument('-ddp', '--dest-db-pass',
+parser.add_argument('-ddp', '--dest-db-pass', nargs='?',
                     help='what the password for the user should be, defaults to source-db-pass', const='prompt')
 parser.add_argument('-sdh', '--source-db-host', help='where the database currently resides', required=True)
 parser.add_argument('-ddh', '--dest-db-host', help='where the database should go', default='aws-db1.firstscribe.com')
