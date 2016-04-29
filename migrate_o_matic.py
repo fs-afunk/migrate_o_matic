@@ -95,7 +95,7 @@ step_placeholder('create the database ' + str(args.dest_db_name))
 # ssh_mysql_proc.wait()
 
 subprocess.call(
-    'mysqldump -u{} -p"{}" -h{} {} | sed "s/TIME_ZONE=\'+00:00\'/TIME_ZONE=\'+06:00\'/" | pv | xz -c -4 | ssh {} "xz -d -c | mysql -u{} -p\"{}\" -h{} {}'.format(
+    'mysqldump -u{} -p"{}" -h{} {} | sed "s/TIME_ZONE=\'+00:00\'/TIME_ZONE=\'+06:00\'/" | pv | xz -c -4 | ssh {} "xz -d -c | mysql -u{} -p\"{}\" -h{} {}"'.format(
         args.source_db_user, args.source_db_pass,
         args.source_db_host, args.source_db_name,
         args.destination, args.dest_db_user,
