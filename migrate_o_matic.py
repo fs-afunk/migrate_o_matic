@@ -71,25 +71,36 @@ step_placeholder('locate the database configuration')
 step_placeholder('create the database ' + str(args.dest_db_name))
 
 # Transfer the Database
-mysqldump_proc = subprocess.Popen(
-    ('mysqldump', '-u', args.source_db_user, '-h', args.source_db_host, '-p', args.source_db_pass, args.source_db_name),
-    stdout=subprocess.PIPE)
-sed_proc = subprocess.Popen(('sed', 's/TIME_ZONE=\'+00:00\'/TIME_ZONE=\'+06:00\'/'), stdout=subprocess.PIPE,
-                            stdin=mysqldump_proc.stdout)
-mysqldump_proc.stdout.close()
-pv_proc = subprocess.Popen('pv',
-                           stdin=sed_proc.stdout, stdout=subprocess.PIPE)
-sed_proc.stdout.close()
-xz_proc = subprocess.Popen(('xz', '-c', '-4'), stdout=subprocess.PIPE, stdin=pv_proc.stdout)
-pv_proc.stdout.close()
-# noinspection PyPep8
-ssh_mysql_proc = subprocess.Popen(('ssh', args.destination,
-                                   '\"xz -d -c | mysql -u ' + args.dest_db_user + ' -p \\\"' + args.dest_db_pass + '\\\" -h ' + args.dest_db_host + ' ' + args.dest_db_name),
-                                  stdin=xz_proc.stdout)
-pv_proc.stdout.close()
 
-ssh_mysql_proc.communicate()
-ssh_mysql_proc.wait()
+# I bit off more than I can chew...
+
+# mysqldump_proc = subprocess.Popen(
+#     ('mysqldump', '-u', args.source_db_user, '-h', args.source_db_host, '-p', args.source_db_pass, args.source_db_name),
+#     stdout=subprocess.PIPE)
+# sed_proc = subprocess.Popen(('sed', 's/TIME_ZONE=\'+00:00\'/TIME_ZONE=\'+06:00\'/'), stdout=subprocess.PIPE,
+#                             stdin=mysqldump_proc.stdout)
+# mysqldump_proc.stdout.close()
+# pv_proc = subprocess.Popen('pv',
+#                            stdin=sed_proc.stdout, stdout=subprocess.PIPE)
+# sed_proc.stdout.close()
+# xz_proc = subprocess.Popen(('xz', '-c', '-4'), stdout=subprocess.PIPE, stdin=pv_proc.stdout)
+# pv_proc.stdout.close()
+# # noinspection PyPep8
+# ssh_mysql_proc = subprocess.Popen(('ssh', args.destination,
+#                                    '\"xz -d -c | mysql -u ' + args.dest_db_user + ' -p \\\"' + args.dest_db_pass + '\\\" -h ' + args.dest_db_host + ' ' + args.dest_db_name),
+#                                   stdin=xz_proc.stdout)
+# pv_proc.stdout.close()
+#
+# ssh_mysql_proc.communicate()
+# ssh_mysql_proc.wait()
+
+subprocess.call(
+    'mysqldump -u{} -p"{}" -h{} {} | sed "s/TIME_ZONE=\'+00:00\'/TIME_ZONE=\'+06:00\'/" | pv | xz -c -4 | ssh {} "xz -d -c | mysql -u{} -p\"{}\" -h{} {}'.format(
+        args.source_db_user, args.source_db_pass,
+        args.source_db_host, args.source_db_name,
+        args.destination, args.dest_db_user,
+        args.dest_db_pass, args.dest_db_host,
+        args.dest_db_name), shell=True) # This is the "wrong" way to do it, but I can't get the nested Popen's to work
 
 # Update the DB refs in local.xmls or wp-config.php
 step_placeholder('update database refs')
@@ -116,15 +127,19 @@ def get_folder_size(folder):
     return total_size
 
 
-tar_proc = subprocess.Popen(('tar', 'cf', '-', 'httpdocs', '-C', site_path), stdout=subprocess.PIPE)
-pv2_proc = subprocess.Popen(('pv', '-s', get_folder_size(site_path)), stdin=tar_proc.stdout, stdout=subprocess.PIPE)
-tar_proc.stdout.close()
-xz2_proc = subprocess.Popen(('xz', '-c'), stdin=pv2_proc.stdout, stdout=subprocess.PIPE)
-pv2_proc.stdout.close()
-ssh_tar_proc = subprocess.Popen(('ssh', args.description, '\"tar xJf - -C ' + site_path + '\"'), stdin=xz2_proc.stdout)
+# Bit off more than I can chew...
 
-ssh_tar_proc.communicate()
-ssh_tar_proc.wait()
+# tar_proc = subprocess.Popen(('tar', 'cf', '-', 'httpdocs', '-C', site_path), stdout=subprocess.PIPE)
+# pv2_proc = subprocess.Popen(('pv', '-s', get_folder_size(site_path)), stdin=tar_proc.stdout, stdout=subprocess.PIPE)
+# tar_proc.stdout.close()
+# xz2_proc = subprocess.Popen(('xz', '-c'), stdin=pv2_proc.stdout, stdout=subprocess.PIPE)
+# pv2_proc.stdout.close()
+# ssh_tar_proc = subprocess.Popen(('ssh', args.description, '\"tar xJf - -C ' + site_path + '\"'), stdin=xz2_proc.stdout)
+#
+# ssh_tar_proc.communicate()
+# ssh_tar_proc.wait()
+
+subprocess.call('tar cf - httpdocs -C {0} | pv -s {1} | xz -c |  ssh {2} "tar xJf - -C {0}"'.format(site_path, get_folder_size(site_path), args.destination), shell=True)
 
 # If we host DNS, copy records
 step_placeholder('update new DNS if on plesk')
