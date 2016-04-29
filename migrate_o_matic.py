@@ -27,15 +27,15 @@ args = parser.parse_args()
 
 # Populate the rest of the arguments
 
-if args.dest_db_name == 'None':
+if args.dest_db_name == None:
     args.dest_db_name = args.source_db_name
-if args.source_db_user == 'None':
+if args.source_db_user == None:
     args.source_db_user = args.source_db_name
-if args.dest_db_user == 'None':
+if args.dest_db_user == None:
     args.dest_db_user = args.source_db_user
 if args.source_db_pass == 'prompt':
     args.source_db_pass = getpass.getpass(prompt='Please enter the source database password: ')
-if args.dest_db_pass == 'None':
+if args.dest_db_pass == None:
     args.dest_db_pass = args.source_db_pass
 elif args.dest_db_pass == 'prompt':
     args.dest_db_pass = getpass.getpass(prompt='Please enter the destination database password: ')
@@ -68,22 +68,22 @@ step_placeholder('verify the PHP and hosting settings')
 step_placeholder('locate the database configuration')
 
 # Make database (through plesk, to get ref)
-step_placeholder('create the database ' + args.dest_db_name)
+step_placeholder('create the database ' + str(args.dest_db_name))
 
 # Transfer the Database
 mysqldump_proc = subprocess.Popen(
     ('mysqldump', '-u', args.source_db_user, '-h', args.source_db_host, '-p', args.source_db_pass, args.source_db_name),
     stdout=subprocess.PIPE)
-sed_proc = subprocess.Popen(('sed', '\"s/TIME_ZONE=\'+00:00\'/TIME_ZONE=\'+06:00\'/\"'), stdout=subprocess.PIPE,
+sed_proc = subprocess.Popen(('sed', 's/TIME_ZONE=\'+00:00\'/TIME_ZONE=\'+06:00\'/'), stdout=subprocess.PIPE,
                             stdin=mysqldump_proc.stdout)
 mysqldump_proc.stdout.close()
 pv_proc = subprocess.Popen('pv',
                            stdin=sed_proc.stdout, stdout=subprocess.PIPE)
 sed_proc.stdout.close()
-xz_proc = subprocess.Popen(('xz', '-c' '-4'), stdout=subprocess.PIPE, stdin=pv_proc.stdout)
+xz_proc = subprocess.Popen(('xz', '-c', '-4'), stdout=subprocess.PIPE, stdin=pv_proc.stdout)
 pv_proc.stdout.close()
 # noinspection PyPep8
-ssh_mysql_proc = subprocess.Popen(('ssh', args.DESCRIPTION,
+ssh_mysql_proc = subprocess.Popen(('ssh', args.destination,
                                    '\"xz -d -c | mysql -u ' + args.dest_db_user + ' -p \\\"' + args.dest_db_pass + '\\\" -h ' + args.dest_db_host + ' ' + args.dest_db_name),
                                   stdin=xz_proc.stdout)
 pv_proc.stdout.close()
