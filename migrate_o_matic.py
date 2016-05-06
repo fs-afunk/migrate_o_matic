@@ -2,8 +2,10 @@ import argparse
 import subprocess
 import os
 import getpass
+import re
 
 DOCUMENT_ROOT = '/var/www/vhosts/'
+DATABASE_REFS = 'wp-config.php|etc/local.xml'
 
 parser = argparse.ArgumentParser(description='migrate a website from one server to another')
 parser.add_argument('site', help='the site to be migrated')
@@ -40,14 +42,39 @@ if args.dest_db_pass == None:
 elif args.dest_db_pass == 'prompt':
     args.dest_db_pass = getpass.getpass(prompt='Please enter the destination database password: ')
 
+# Shorthands for me
+
+site_path = DOCUMENT_ROOT + args.SITE
+site_httpdocs = site_path + '/httpdocs'
 
 def step_placeholder(action):
-    print('Now would be a great time to', action, '.')
+    print('Now would be a great time to {0}.'.format(action))
     input('Press enter when done.')
+
+def get_folder_size(folder):
+    total_size = os.path.getsize(folder)
+    for item in os.listdir(folder):
+        itempath = os.path.join(folder, item)
+        if os.path.isfile(itempath):
+            total_size += os.path.getsize(itempath)
+        elif os.path.isdir(itempath):
+            total_size += get_folder_size(itempath)
+    return total_size
+
+db_ref_regexr = re.compile(DATABASE_REFS)
+
+possible_db_refs = []
+
+for root, dirs, files in os.walk(site_httpdocs):
+    for name in files:
+        full_path=os.path.join(root, name)
+        if db_ref_regexr.search(full_path):
+            possible_db_refs.append(full_path) # TODO Finish this thought.
+
 
 
 # Verify ssh-agent is running
-step_placeholder('start an ssh agent')
+step_placeholder('verify your ssh agent')
 
 # Verify DNS abilities
 step_placeholder('verify that we can alter DNS')
@@ -68,7 +95,7 @@ step_placeholder('verify the PHP and hosting settings')
 step_placeholder('locate the database configuration')
 
 # Make database (through plesk, to get ref)
-step_placeholder('create the database ' + str(args.dest_db_name))
+step_placeholder('create the database {0}'.format(args.dest_db_name))
 
 # Transfer the Database
 
@@ -94,7 +121,7 @@ step_placeholder('create the database ' + str(args.dest_db_name))
 # ssh_mysql_proc.communicate()
 # ssh_mysql_proc.wait()
 
-the_proc = """mysqldump -u {0} -p "{1}" -h {2} {3} | sed "s/TIME_ZONE='+00:00'/TIME_ZONE='+06:00'/" | pv | xz -c -4 | ssh {4} "xz -d -c | mysql -u {5} -p \"{6}\" -h {7} {8}" """.format(
+the_proc = """mysqldump -u {0} -p "{1}" -h {2} {3} | sed "s/TIME_ZONE='+00:00'/TIME_ZONE='+06:00'/" | pv | xz -c -4 | ssh {4} "xz -d -c | mysql -h {5} {6}" """.format(
         args.source_db_user, args.source_db_pass,
         args.source_db_host, args.source_db_name,
         args.destination, args.dest_db_user,
@@ -109,22 +136,11 @@ step_placeholder('update database refs')
 step_placeholder('test the original site')
 
 # Transfer the site
-site_path = DOCUMENT_ROOT + args.SITE
-site_httpdocs = site_path + '/httpdocs'
+
 
 subprocess.call(('ssh', '-t', args.destination, '\"sudo chmod -R g+w ' + site_path + '\"'))
 subprocess.call(('ssh', args.destination, '\"rm -rf ' + site_httpdocs + '*\"'))
 
-
-def get_folder_size(folder):
-    total_size = os.path.getsize(folder)
-    for item in os.listdir(folder):
-        itempath = os.path.join(folder, item)
-        if os.path.isfile(itempath):
-            total_size += os.path.getsize(itempath)
-        elif os.path.isdir(itempath):
-            total_size += get_folder_size(itempath)
-    return total_size
 
 
 # Bit off more than I can chew...
@@ -139,7 +155,7 @@ def get_folder_size(folder):
 # ssh_tar_proc.communicate()
 # ssh_tar_proc.wait()
 
-subprocess.call('tar cf - httpdocs -C {0} | pv -s {1} | xz -c |  ssh {2} "tar xJf - -C {0}"'.format(site_path, get_folder_size(site_path), args.destination), shell=True)
+subprocess.call('tar cf - -C {0} httpdocs | pv -s {1} | xz -c |  ssh {2} "tar xJf - -C {0}"'.format(site_path, get_folder_size(site_path), args.destination), shell=True)
 
 # If we host DNS, copy records
 step_placeholder('update new DNS if on plesk')
