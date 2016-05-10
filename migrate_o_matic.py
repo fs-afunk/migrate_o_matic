@@ -48,7 +48,7 @@ site_path = DOCUMENT_ROOT + args.SITE
 site_httpdocs = site_path + '/httpdocs'
 
 def step_placeholder(action):
-    print('Now would be a great time to {0}.'.format(action))
+    print('Did you {0}?'.format(action))
     input('Press enter when done.')
 
 def get_folder_size(folder):
@@ -60,18 +60,6 @@ def get_folder_size(folder):
         elif os.path.isdir(itempath):
             total_size += get_folder_size(itempath)
     return total_size
-
-db_ref_regexr = re.compile(DATABASE_REFS)
-
-possible_db_refs = []
-
-for root, dirs, files in os.walk(site_httpdocs):
-    for name in files:
-        full_path=os.path.join(root, name)
-        if db_ref_regexr.search(full_path):
-            possible_db_refs.append(full_path) # TODO Finish this thought.
-
-
 
 # Verify ssh-agent is running
 step_placeholder('verify your ssh agent')
@@ -92,7 +80,22 @@ step_placeholder('copy the SSL certificates')
 step_placeholder('verify the PHP and hosting settings')
 
 # Find database references.  I like grep -R '\.firstscribe\.com'
-step_placeholder('locate the database configuration')
+db_ref_regexr = re.compile(DATABASE_REFS)
+
+possible_db_refs = []
+
+for root, dirs, files in os.walk(site_httpdocs):
+    for name in files:
+        full_path=os.path.join(root, name)
+        if db_ref_regexr.search(full_path):
+            possible_db_refs.append(full_path)
+
+print('I see possible database references in:')
+for item in possible_db_refs:
+    print(item)
+
+print('Does that look right?')
+input('Press enter to continue.')
 
 # Make database (through plesk, to get ref)
 step_placeholder('create the database {0}'.format(args.dest_db_name))
@@ -121,27 +124,24 @@ step_placeholder('create the database {0}'.format(args.dest_db_name))
 # ssh_mysql_proc.communicate()
 # ssh_mysql_proc.wait()
 
-the_proc = """mysqldump -u {0} -p "{1}" -h {2} {3} | sed "s/TIME_ZONE='+00:00'/TIME_ZONE='+06:00'/" | pv | xz -c -4 | ssh {4} "xz -d -c | mysql -h {5} {6}" """.format(
-        args.source_db_user, args.source_db_pass,
-        args.source_db_host, args.source_db_name,
-        args.destination, args.dest_db_user,
-        args.dest_db_pass, args.dest_db_host,
-        args.dest_db_name)
-subprocess.call(the_proc, shell=True) # This is the "wrong" way to do it, but I can't get the nested Popen's to work
+db_proc = """mysqldump -u {0} -p "{1}" -h {2} {3} | sed "s/TIME_ZONE='+00:00'/TIME_ZONE='+06:00'/" | pv | xz -c -4 | ssh {4} "xz -d -c | mysql -h {5} {6}" """.format(
+        args.source_db_user, args.source_db_pass, args.source_db_host, args.source_db_name,
+        args.destination, args.dest_db_host, args.dest_db_name)
+subprocess.call(db_proc, shell=True)  # This is the "wrong" way to do it, but I can't get the nested Popen's to work
 
 # Update the DB refs in local.xmls or wp-config.php
 step_placeholder('update database refs')
+
+# Clear magento cache
+step_placeholder('clear the magento cache')
 
 # Make sure you didn't break anything
 step_placeholder('test the original site')
 
 # Transfer the site
 
-
-subprocess.call(('ssh', '-t', args.destination, '\"sudo chmod -R g+w ' + site_path + '\"'))
-subprocess.call(('ssh', args.destination, '\"rm -rf ' + site_httpdocs + '*\"'))
-
-
+subprocess.call(('ssh', '-t', args.destination, '"sudo chmod -R g+w {0}"'.format(site_path)))
+subprocess.call(('ssh', args.destination, '"rm -rf {0}\*"'.format(site_httpdocs)))
 
 # Bit off more than I can chew...
 
@@ -155,7 +155,8 @@ subprocess.call(('ssh', args.destination, '\"rm -rf ' + site_httpdocs + '*\"'))
 # ssh_tar_proc.communicate()
 # ssh_tar_proc.wait()
 
-subprocess.call('tar cf - -C {0} httpdocs | pv -s {1} | xz -c |  ssh {2} "tar xJf - -C {0}"'.format(site_path, get_folder_size(site_path), args.destination), shell=True)
+tar_proc = 'tar cf - -C {0} httpdocs | pv -s {1} | xz -c |  ssh {2} "tar xJf - -C {0}"'.format(site_path, get_folder_size(site_path), args.destination)
+subprocess.call(tar_proc, shell=True)
 
 # If we host DNS, copy records
 step_placeholder('update new DNS if on plesk')
@@ -165,9 +166,6 @@ step_placeholder('test the site in the new location.')
 
 # Update DNS/Switch Nameserver
 step_placeholder('update the real DNS')
-
-# Clear magento cache
-step_placeholder('clear the magento cache')
 
 # Disable old site next day
 step_placeholder('make a reminder to disable the site the next day')
