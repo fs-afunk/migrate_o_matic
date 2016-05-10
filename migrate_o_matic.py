@@ -44,7 +44,7 @@ elif args.dest_db_pass == 'prompt':
 
 # Shorthands for me
 
-site_path = DOCUMENT_ROOT + args.SITE
+site_path = DOCUMENT_ROOT + args.site
 site_httpdocs = site_path + '/httpdocs'
 
 def step_placeholder(action):
