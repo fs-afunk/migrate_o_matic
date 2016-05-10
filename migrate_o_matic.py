@@ -1,8 +1,10 @@
 import argparse
 import subprocess
+import threading
 import os
 import getpass
 import re
+import shlex
 
 DOCUMENT_ROOT = '/var/www/vhosts/'
 DATABASE_REFS = 'wp-config.php|etc/local.xml'
@@ -124,10 +126,13 @@ step_placeholder('create the database {0}'.format(args.dest_db_name))
 # ssh_mysql_proc.communicate()
 # ssh_mysql_proc.wait()
 
-db_proc = """mysqldump -u {0} -p "{1}" -h {2} {3} | sed "s/TIME_ZONE='+00:00'/TIME_ZONE='+06:00'/" | pv | xz -c -4 | ssh {4} "xz -d -c | mysql -h {5} {6}" """.format(
-        args.source_db_user, args.source_db_pass, args.source_db_host, args.source_db_name,
-        args.destination, args.dest_db_host, args.dest_db_name)
-subprocess.call(db_proc, shell=True)  # This is the "wrong" way to do it, but I can't get the nested Popen's to work
+db_proc = """mysqldump -u{0} -p{1} -h{2} {3} | sed "s/TIME_ZONE='+00:00'/TIME_ZONE='+06:00'/" | pv | xz -c -4 | ssh {4} "xz -d -c | mysql -u{5} -p{6} -h{7} {8}" """.format(
+        args.source_db_user, shlex.quote(args.source_db_pass), args.source_db_host, args.source_db_name,
+        args.destination, args.dest_db_user, shlex.quote(args.dest_db_pass), args.dest_db_host, args.dest_db_name)
+try:
+    subprocess.call(db_proc, shell=True)  # This is the "wrong" way to do it, but I can't get the nested Popen's to work
+except KeyboardInterrupt:
+    exit(0)
 
 # Update the DB refs in local.xmls or wp-config.php
 step_placeholder('update database refs')
@@ -156,7 +161,10 @@ subprocess.call(('ssh', args.destination, '"rm -rf {0}\*"'.format(site_httpdocs)
 # ssh_tar_proc.wait()
 
 tar_proc = 'tar cf - -C {0} httpdocs | pv -s {1} | xz -c |  ssh {2} "tar xJf - -C {0}"'.format(site_path, get_folder_size(site_path), args.destination)
-subprocess.call(tar_proc, shell=True)
+try:
+    subprocess.call(tar_proc, shell=True)
+except KeyboardInterrupt:
+    exit(0)
 
 # If we host DNS, copy records
 step_placeholder('update new DNS if on plesk')
