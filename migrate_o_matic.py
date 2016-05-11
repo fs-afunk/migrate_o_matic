@@ -1,6 +1,5 @@
 import argparse
 import subprocess
-import threading
 import os
 import getpass
 import re
@@ -31,27 +30,28 @@ args = parser.parse_args()
 
 # Populate the rest of the arguments
 
-if args.dest_db_name == None:
+if args.dest_db_name is None:
     args.dest_db_name = args.source_db_name
-if args.source_db_user == None:
+if args.source_db_user is None:
     args.source_db_user = args.source_db_name
-if args.dest_db_user == None:
+if args.dest_db_user is None:
     args.dest_db_user = args.source_db_user
-if args.source_db_pass == 'prompt':
+if args.source_db_pass is 'prompt':
     args.source_db_pass = getpass.getpass(prompt='Please enter the source database password: ')
-if args.dest_db_pass == None:
+if args.dest_db_pass is None:
     args.dest_db_pass = args.source_db_pass
-elif args.dest_db_pass == 'prompt':
+elif args.dest_db_pass is 'prompt':
     args.dest_db_pass = getpass.getpass(prompt='Please enter the destination database password: ')
 
 # Shorthands for me
 
-site_path = DOCUMENT_ROOT + args.site
-site_httpdocs = site_path + '/httpdocs'
+site_httpdocs = DOCUMENT_ROOT + args.site + '/httpdocs'
+
 
 def step_placeholder(action):
     print('Did you {0}?'.format(action))
     input('Press enter when done.')
+
 
 def get_folder_size(folder):
     total_size = os.path.getsize(folder)
@@ -126,6 +126,8 @@ step_placeholder('create the database {0}'.format(args.dest_db_name))
 # ssh_mysql_proc.communicate()
 # ssh_mysql_proc.wait()
 
+print('OK, I am going to try to migrate the database now...')
+
 db_proc = """mysqldump -u{0} -p{1} -h{2} {3} | sed "s/TIME_ZONE='+00:00'/TIME_ZONE='+06:00'/" | pv | xz -c -4 | ssh {4} "xz -d -c | mysql -u{5} -p{6} -h{7} {8}" """.format(
         args.source_db_user, shlex.quote(args.source_db_pass), args.source_db_host, args.source_db_name,
         args.destination, args.dest_db_user, shlex.quote(args.dest_db_pass), args.dest_db_host, args.dest_db_name)
@@ -145,8 +147,9 @@ step_placeholder('test the original site')
 
 # Transfer the site
 
-subprocess.call(('ssh', '-t', args.destination, '"sudo chmod -R g+w {0}"'.format(site_path)))
-subprocess.call(('ssh', args.destination, '"rm -rf {0}\*"'.format(site_httpdocs)))
+subprocess.call(('sudo chmod g+w {0}'.format(site_httpdocs)))
+subprocess.call(('ssh', '-t', args.destination, 'sudo chmod g+w {0}'.format(site_httpdocs)))
+subprocess.call(('ssh', args.destination, 'rm -rf {0}/*'.format(site_httpdocs)))
 
 # Bit off more than I can chew...
 
@@ -160,7 +163,7 @@ subprocess.call(('ssh', args.destination, '"rm -rf {0}\*"'.format(site_httpdocs)
 # ssh_tar_proc.communicate()
 # ssh_tar_proc.wait()
 
-tar_proc = 'tar cf - -C {0} httpdocs | pv -s {1} | xz -c |  ssh {2} "tar xJf - -C {0}"'.format(site_path, get_folder_size(site_path), args.destination)
+tar_proc = 'tar cf - -C {0} . | pv -s {1} | xz -c |  ssh {2} "tar xJf - -C {0}"'.format(site_httpdocs, get_folder_size(site_httpdocs), args.destination)
 try:
     subprocess.call(tar_proc, shell=True)
 except KeyboardInterrupt:
