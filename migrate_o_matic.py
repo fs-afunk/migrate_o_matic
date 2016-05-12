@@ -153,7 +153,7 @@ step_placeholder('test the original site')
 
 # subprocess.call(('sudo chmod g+w {0}'.format(site_httpdocs)))
 # subprocess.call(('ssh', '-t', args.destination, 'sudo chmod g+w {0}'.format(site_httpdocs)))
-# subprocess.call(('ssh', args.destination, 'rm -rf {0}/*'.format(site_httpdocs)))
+subprocess.call(('ssh', args.dest_sftp_user + '@' + args.destination, 'rm -rf {0}/*'.format(site_httpdocs)))
 
 # Bit off more than I can chew...
 
