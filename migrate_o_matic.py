@@ -6,7 +6,7 @@ import re
 import shlex
 
 DOCUMENT_ROOT = '/var/www/vhosts/'
-DATABASE_REFS = 'wp-config.php|etc/local.xml'
+DATABASE_REFS = 'wp-config.php|etc/local.xml$'
 
 parser = argparse.ArgumentParser(description='migrate a website from one server to another')
 parser.add_argument('site', help='the site to be migrated')
@@ -26,6 +26,8 @@ parser.add_argument('-ddp', '--dest-db-pass', nargs='?',
                     help='what the password for the user should be, defaults to source-db-pass', const='prompt')
 parser.add_argument('-sdh', '--source-db-host', help='where the database currently resides', required=True)
 parser.add_argument('-ddh', '--dest-db-host', help='where the database should go', default='aws-db1.firstscribe.com')
+parser.add_argument('-dsu', '--dest-sftp-user', help='the username for the customer SFTP account', required=True)
+parser.add_argument('-dsp', '--dest-sftp-pass', help='the password for the customer SFTP account', nargs='?', const='prompt')  # I can't figure out how to do anythign with this...
 args = parser.parse_args()
 
 # Populate the rest of the arguments
@@ -42,6 +44,8 @@ if args.dest_db_pass is None:
     args.dest_db_pass = args.source_db_pass
 elif args.dest_db_pass is 'prompt':
     args.dest_db_pass = getpass.getpass(prompt='Please enter the destination database password: ')
+if args.dest_sftp_pass is 'prompt':
+    args.dest_sftp_pass = getpass.getpass(prompt='Please enter the password for the customer SFTP account: ')
 
 # Shorthands for me
 
@@ -147,9 +151,9 @@ step_placeholder('test the original site')
 
 # Transfer the site
 
-subprocess.call(('sudo chmod g+w {0}'.format(site_httpdocs)))
-subprocess.call(('ssh', '-t', args.destination, 'sudo chmod g+w {0}'.format(site_httpdocs)))
-subprocess.call(('ssh', args.destination, 'rm -rf {0}/*'.format(site_httpdocs)))
+# subprocess.call(('sudo chmod g+w {0}'.format(site_httpdocs)))
+# subprocess.call(('ssh', '-t', args.destination, 'sudo chmod g+w {0}'.format(site_httpdocs)))
+# subprocess.call(('ssh', args.destination, 'rm -rf {0}/*'.format(site_httpdocs)))
 
 # Bit off more than I can chew...
 
@@ -163,7 +167,7 @@ subprocess.call(('ssh', args.destination, 'rm -rf {0}/*'.format(site_httpdocs)))
 # ssh_tar_proc.communicate()
 # ssh_tar_proc.wait()
 
-tar_proc = 'tar cf - -C {0} . | pv -s {1} | xz -c |  ssh {2} "tar xJf - -C {0}"'.format(site_httpdocs, get_folder_size(site_httpdocs), args.destination)
+tar_proc = 'tar cf - -C {0} . | pv -s {1} | xz -c |  ssh {2}@{3} "tar xJf - -C {0}"'.format(site_httpdocs, get_folder_size(site_httpdocs), args.dest_sftp_user, args.destination)
 try:
     subprocess.call(tar_proc, shell=True)
 except KeyboardInterrupt:
