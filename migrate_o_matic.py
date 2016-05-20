@@ -15,7 +15,8 @@ parser.add_argument('destination', help='where to move the site')
 
 # parser.add_argument('-v', '--verbose', help='explain what you are doing', action='store_true')
 parser.add_argument('--no-db', help='skip the database migration', action='store_true')
-parser.add_argument('-sdn', '--source-db-name', help='what the database is currently named', required=True)
+parser.add_argument('--freshen', help='site already exists at destination, just freshen contents', action='store_true')
+parser.add_argument('-sdn', '--source-db-name', help='what the database is currently named')
 parser.add_argument('-ddn', '--dest-db-name', help='what the database should be named, defaults to source-db-name')
 parser.add_argument('-sdu', '--source-db-user',
                     help='what user currently uses the database, defaults to source-db-name')
@@ -25,11 +26,17 @@ parser.add_argument('-sdp', '--source-db-pass', nargs='?',
                     required=True)
 parser.add_argument('-ddp', '--dest-db-pass', nargs='?',
                     help='what the password for the user should be, defaults to source-db-pass', const='prompt')
-parser.add_argument('-sdh', '--source-db-host', help='where the database currently resides', required=True)
+parser.add_argument('-sdh', '--source-db-host', help='where the database currently resides')
 parser.add_argument('-ddh', '--dest-db-host', help='where the database should go', default='aws-db1.firstscribe.com')
-parser.add_argument('-dsu', '--dest-sftp-user', help='the username for the customer SFTP account', required=True)
+parser.add_argument('-dsu', '--dest-sftp-user', help='the username for the customer SFTP account')
 #parser.add_argument('-dsp', '--dest-sftp-pass', help='the password for the customer SFTP account', nargs='?', const='prompt')  # I can't figure out how to do anything with this...
 args = parser.parse_args()
+
+# If no-db is not defined, we need at least sdn, sdp, and sdh
+
+if not args.no_db and args.source_db_name is None and args.source_db_pass is None and args.source_db_host is None:
+    print('If --no-db is not specified, you must define at least -sdn, -sdp, and -sdh.')
+    exit(2)
 
 # Populate the rest of the arguments
 
@@ -71,7 +78,7 @@ def get_folder_size(folder):
 def magento_cred_parse(path):
     xmldoc = xml.dom.minidom.parse(path)
     config = xmldoc.documentElement
-    conn = root.find('.//connection')
+    conn = config.find('.//connection')
 
 
 # Verify DNS abilities
@@ -81,7 +88,7 @@ step_placeholder('verify that we can alter DNS')
 step_placeholder('notify the customer')
 
 # Create new customer/domains on plesk
-step_placeholder('make the new customer in plesk')
+step_placeholder('make the new customer in plesk - use bash as shell')
 
 # Copy SSL certs if any
 step_placeholder('copy the SSL certificates')
@@ -158,8 +165,6 @@ if not args.no_db:
 
 # subprocess.call(('sudo chmod g+w {0}'.format(site_httpdocs)))
 # subprocess.call(('ssh', '-t', args.destination, 'sudo chmod g+w {0}'.format(site_httpdocs)))
-print('OK, I am going to try to migrate the site now...')
-subprocess.call(('ssh', args.dest_sftp_user + '@' + args.destination, 'rm -rf {0}/*'.format(site_httpdocs)))
 
 # Bit off more than I can chew...
 
@@ -173,7 +178,19 @@ subprocess.call(('ssh', args.dest_sftp_user + '@' + args.destination, 'rm -rf {0
 # ssh_tar_proc.communicate()
 # ssh_tar_proc.wait()
 
-tar_proc = 'tar cf - -C {0} . | pv -s {1} | xz -c |  ssh {2}@{3} "tar xJf - -C {0}"'.format(site_httpdocs, get_folder_size(site_httpdocs), args.dest_sftp_user, args.destination)
+print('OK, I am going to try to migrate the site now...')
+if args.freshen:
+    print('Performing rsync, as freshen was defined.')
+    tar_proc = 'rsync -rtlD {0} {1}@{2}:{0}'.format(site_httpdocs, args.dest_sftp_user, args.destination)
+else:
+    tar_proc = 'tar cf - -C {0} . | pv -s {1} | xz -c |  ssh {2}@{3} "tar xJf - -C {0}"'.format(site_httpdocs,
+                                                                                                get_folder_size(
+                                                                                                    site_httpdocs),
+                                                                                                args.dest_sftp_user,
+                                                                                                args.destination)
+    # The destination directory has crap, clear it out.
+    subprocess.call(('ssh', args.dest_sftp_user + '@' + args.destination, 'rm -rf {0}/*'.format(site_httpdocs)))
+
 try:
     subprocess.call(tar_proc, shell=True)
 except KeyboardInterrupt:
