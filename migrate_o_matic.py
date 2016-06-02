@@ -78,6 +78,12 @@ def magento_cred_parse(path):
     config = xmldoc.documentElement
     conn = config.find('.//connection')
 
+def wp_cred_parse(path):
+    f = open(path,'r')
+    result = re.findall(r"""^define\(\s*['"]*(.*?)['"]*[\s,]+['"]*(.*?)['"]*\s*\)""", f.read(), re.IGNORECASE | re.DOTALL | re.MULTILINE)
+    f.close()
+    return dict(result)
+
 
 # Verify DNS abilities
 step_placeholder('verify that we can alter DNS')
@@ -224,8 +230,9 @@ step_placeholder('test the site in the new location')
 step_placeholder('update the real DNS')
 
 # Transfer cron jobs
-if len(magento_roots) == 0:
-    step_placeholder('transfer any cron jobs')
+if not args.no_db:
+    if len(magento_roots) == 0:
+        step_placeholder('transfer any cron jobs')
 
 # Transfer cron jobs
 step_placeholder('switch that shell back')
