@@ -166,7 +166,7 @@ if not args.no_db:
     step_placeholder('update database refs')
 
     # Clear magento cache
-    if magento_root != None:
+    if len(magento_roots) == 0:
         step_placeholder('clear the magento cache')
 
     # Make sure you didn't break anything
@@ -225,7 +225,7 @@ step_placeholder('test the site in the new location')
 step_placeholder('update the real DNS')
 
 # Transfer cron jobs
-if magento_root != None:
+if len(magento_roots) == 0:
     step_placeholder('transfer any cron jobs')
 
 # Transfer cron jobs
