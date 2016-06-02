@@ -22,8 +22,7 @@ parser.add_argument('-sdu', '--source-db-user',
                     help='what user currently uses the database, defaults to source-db-name')
 parser.add_argument('-ddu', '--dest-db-user', help='what user will use the database, defaults to dest-db-name')
 parser.add_argument('-sdp', '--source-db-pass', nargs='?',
-                    help='what the password for the user currently is, defaults to prompt', const='prompt',
-                    required=True)
+                    help='what the password for the user currently is, defaults to prompt', const='prompt')
 parser.add_argument('-ddp', '--dest-db-pass', nargs='?',
                     help='what the password for the user should be, defaults to source-db-pass', const='prompt')
 parser.add_argument('-sdh', '--source-db-host', help='where the database currently resides')
