@@ -7,7 +7,7 @@ import shlex
 import xml.dom.minidom
 
 DOCUMENT_ROOT = '/var/www/vhosts/'
-DATABASE_REFS = 'wp-config.php|etc/local.xml|includes?/config.xml$'
+DATABASE_REFS = 'wp-config.php|etc/local.xml|includes?/(config.xml|connect.php)$'
 
 parser = argparse.ArgumentParser(description='migrate a website from one server to another')
 parser.add_argument('site', help='the site to be migrated')
