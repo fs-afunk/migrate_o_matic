@@ -56,8 +56,8 @@ elif args.dest_db_pass is 'prompt':
     args.dest_db_pass = getpass.getpass(prompt='Please enter the destination database password: ')
 #if args.dest_sftp_pass is 'prompt':
 #    args.dest_sftp_pass = getpass.getpass(prompt='Please enter the password for the customer SFTP account: ')
-if args.dest_db_site is None:
-    args.dest_db_site = args.site
+if args.dest_sftp_site is None:
+    args.dest_sftp_site = args.site
 
 # Shorthands for me
 
