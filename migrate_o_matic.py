@@ -29,7 +29,9 @@ parser.add_argument('-sdh', '--source-db-host', help='where the database current
 parser.add_argument('-ddh', '--dest-db-host', help='where the database should go', default='aws-db1.firstscribe.com')
 parser.add_argument('-dsu', '--dest-sftp-user', help='the username for the customer SFTP account')
 #parser.add_argument('-dsp', '--dest-sftp-pass', help='the password for the customer SFTP account', nargs='?', const='prompt')  # I can't figure out how to do anything with this...
+parser.add_argument('-dss', '--dest-sftp-site', help='the site name on the destination server, if different')
 args = parser.parse_args()
+
 
 # If no-db is not defined, we need at least sdn, sdp, and sdh
 
@@ -54,10 +56,13 @@ elif args.dest_db_pass is 'prompt':
     args.dest_db_pass = getpass.getpass(prompt='Please enter the destination database password: ')
 #if args.dest_sftp_pass is 'prompt':
 #    args.dest_sftp_pass = getpass.getpass(prompt='Please enter the password for the customer SFTP account: ')
+if args.dest_db_site is None:
+    args.dest_db_site = args.site
 
 # Shorthands for me
 
 site_httpdocs = DOCUMENT_ROOT + args.site + '/httpdocs'
+dest_httpdocs = DOCUMENT_ROOT + args.dest_sftp_site + '/httpdocs'
 
 def step_placeholder(action):
     print('Did you {0}?'.format(action))
@@ -150,6 +155,9 @@ if not args.no_db:
     magento_roots = []
     possible_db_refs = []
 
+    if args.verbose:
+        print('Looking for magento/wordpress installs...')
+
     for root, dirs, files in os.walk(site_httpdocs):
         if 'app' in dirs:
             magento_roots.append(root)
@@ -240,20 +248,21 @@ print('OK, I am going to try to migrate the site now...')
 if args.freshen:
     print('Performing rsync, as freshen was defined.')
     if args.verbose:
-        rsync_verbose = ' --verbose'
+        rsync_verbose = '--verbose '
     else:
         rsync_verbose = ''
-    tar_proc = 'rsync -rtlD --delete {3}{0}/ {1}@{2}:{0}/'.format(site_httpdocs, args.dest_sftp_user, args.destination, rsync_verbose)
+    tar_proc = 'rsync -rtlD --delete {3}{0}/ {1}@{2}:{4}/'.format(site_httpdocs, args.dest_sftp_user, args.destination, rsync_verbose, dest_httpdocs)
 else:
-    tar_proc = 'tar cf - -C {0} . | pv -s {1} | xz -c |  ssh {2}@{3} "tar xJf - -C {0}"'.format(site_httpdocs,
+    tar_proc = 'tar cf - -C {0} . | pv -s {1} | xz -c |  ssh {2}@{3} "tar xJf - -C {4}"'.format(site_httpdocs,
                                                                                                 get_folder_size(
                                                                                                     site_httpdocs),
                                                                                                 args.dest_sftp_user,
-                                                                                                args.destination)
+                                                                                                args.destination,
+                                                                                                dest_httpdocs)
     # The destination directory has crap, clear it out.
     if args.verbose:
         print('Clearing crap')
-    subprocess.call(('ssh', args.dest_sftp_user + '@' + args.destination, 'rm -rf {0}/*'.format(site_httpdocs)))
+    subprocess.call(('ssh', args.dest_sftp_user + '@' + args.destination, 'rm -rf {0}/*'.format(dest_httpdocs)))
 if args.verbose:
     print(tar_proc)
 
