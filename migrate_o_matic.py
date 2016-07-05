@@ -33,7 +33,8 @@ args = parser.parse_args()
 
 # If no-db is not defined, we need at least sdn, sdp, and sdh
 
-if not args.no_db and args.source_db_name is None and args.source_db_pass is None and args.source_db_host is None:
+if not args.no_db and (
+not (not (args.source_db_name is None) and not (args.source_db_pass is None) and not (args.source_db_host is None))):
     print('If --no-db is not specified, you must define at least -sdn, -sdp, and -sdh.')
     exit(2)
 
@@ -171,7 +172,7 @@ if not args.no_db:
     step_placeholder('update database refs')
 
     # Clear magento cache
-    if len(magento_roots) == 0:
+    if len(magento_roots) != 0:
         step_placeholder('clear the magento cache')
 
     # Make sure you didn't break anything
@@ -231,7 +232,7 @@ step_placeholder('update the real DNS')
 
 # Transfer cron jobs
 if not args.no_db:
-    if len(magento_roots) == 0:
+    if len(magento_roots) != 0:
         step_placeholder('transfer any cron jobs')
 
 # Transfer cron jobs
