@@ -85,6 +85,39 @@ def wp_cred_parse(path):
     f.close()
     return dict(result)
 
+def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipes/577058/
+    """Ask a yes/no question via raw_input() and return their answer.
+
+    "question" is a string that is presented to the user.
+    "default" is the presumed answer if the user just hits <Enter>.
+        It must be "yes" (the default), "no" or None (meaning
+        an answer is required of the user).
+
+    The "answer" return value is True for "yes" or False for "no".
+    """
+    valid = {"yes": True, "y": True, "ye": True,
+             "no": False, "n": False}
+    if default is None:
+        prompt = " [y/n] "
+    elif default == "yes":
+        prompt = " [Y/n] "
+    elif default == "no":
+        prompt = " [y/N] "
+    else:
+        raise ValueError("invalid default answer: '%s'" % default)
+
+    while True:
+        sys.stdout.write(question + prompt)
+        choice = raw_input().lower()
+        if default is not None and choice == '':
+            return valid[default]
+        elif choice in valid:
+            return valid[choice]
+        else:
+            sys.stdout.write("Please respond with 'yes' or 'no' "
+                             "(or 'y' or 'n').\n")
+
+
 
 # Verify DNS abilities
 step_placeholder('verify that we can alter DNS')
@@ -100,6 +133,14 @@ step_placeholder('copy the SSL certificates')
 
 # Copy any special hosting settings/php settings
 step_placeholder('verify the PHP and hosting settings')
+
+# Look for the existence of a vhost.conf file
+if os.path.isfile('{0}/{1}/conf/vhost.conf'.format(DOCUMENT_ROOT, args.site)):
+    see_conf = query_yes_no('I see custom vhost settings.  Would you like to see them?', default='no')
+    if see_conf:
+        with open('{0}/{1}/conf/vhost.conf'.format(DOCUMENT_ROOT, args.site), 'rb') as conf_file:
+            for line in conf_file:
+                print(line, end='')
 
 if not args.no_db:
     # Try to find Magento and Wordpress installs, as well as other DB refs
