@@ -112,8 +112,7 @@ def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipe
         raise ValueError("invalid default answer: '%s'" % default)
 
     while True:
-        sys.stdout.write(question + prompt)
-        choice = raw_input().lower()
+        choice = input(question + prompt).lower()
         if default is not None and choice == '':
             return valid[default]
         elif choice in valid:
