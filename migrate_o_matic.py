@@ -142,7 +142,7 @@ step_placeholder('verify the PHP and hosting settings')
 if os.path.isfile('{0}/{1}/conf/vhost.conf'.format(DOCUMENT_ROOT, args.site)):
     see_conf = query_yes_no('I see custom vhost settings.  Would you like to see them?', default='no')
     if see_conf:
-        with open('{0}/{1}/conf/vhost.conf'.format(DOCUMENT_ROOT, args.site), 'rb') as conf_file:
+        with open('{0}/{1}/conf/vhost.conf'.format(DOCUMENT_ROOT, args.site), 'r') as conf_file:
             for line in conf_file:
                 print(line, end='')
 
