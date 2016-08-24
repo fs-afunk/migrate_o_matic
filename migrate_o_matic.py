@@ -27,7 +27,7 @@ parser.add_argument('-ddp', '--dest-db-pass', nargs='?',
 parser.add_argument('-sdh', '--source-db-host', help='where the database currently resides')
 parser.add_argument('-ddh', '--dest-db-host', help='where the database should go', default='aws-db1.firstscribe.com')
 parser.add_argument('-dsu', '--dest-sftp-user', help='the username for the customer SFTP account')
-#parser.add_argument('-dsp', '--dest-sftp-pass', help='the password for the customer SFTP account', nargs='?', const='prompt')  # I can't figure out how to do anything with this...
+# parser.add_argument('-dsp', '--dest-sftp-pass', help='the password for the customer SFTP account', nargs='?', const='prompt')  # I can't figure out how to do anything with this...
 parser.add_argument('-dss', '--dest-sftp-site', help='the site name on the destination server, if different')
 args = parser.parse_args()
 
@@ -45,8 +45,8 @@ class WpInstance:
         self.config_path = base_path + '/wp-config.php'
 
         with open(self.config_path, 'r') as conf_fh:
-            t_result  = re.findall(r"""^define\(\s*['"]*(.*?)['"]*[\s,]+['"]*(.*?)['"]*\s*\)""", conf_fh.read(),
-                                re.IGNORECASE | re.DOTALL | re.MULTILINE)
+            t_result = re.findall(r"""^define\(\s*['"]*(.*?)['"]*[\s,]+['"]*(.*?)['"]*\s*\)""", conf_fh.read(),
+                                  re.IGNORECASE | re.DOTALL | re.MULTILINE)
 
         result = dict(t_result)
 
@@ -86,6 +86,7 @@ class WpInstance:
         self.password = password
         self.host = host
 
+
 def step_placeholder(action):
     print('Did you {0}?'.format(action))
     input('Press enter when done.')
@@ -100,6 +101,7 @@ def get_folder_size(folder):
         elif os.path.isdir(itempath):
             total_size += get_folder_size(itempath)
     return total_size
+
 
 def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipes/577058/
     """Ask a yes/no question via raw_input() and return their answer.
@@ -132,8 +134,9 @@ def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipe
             sys.stdout.write("Please respond with 'yes' or 'no' "
                              "(or 'y' or 'n').\n")
 
+
 if not args.no_db:
-    #Let's try to find a wordpress install
+    # Let's try to find a wordpress install
 
     db_ref_regexr = re.compile(DATABASE_REFS)
 
@@ -152,7 +155,7 @@ if not args.no_db:
 
         # Although inefficient, build full paths so we can search for patterns with paths
         for name in files:
-            full_path=os.path.join(root, name)
+            full_path = os.path.join(root, name)
             if db_ref_regexr.search(full_path):
                 possible_db_refs.append(full_path)
 
@@ -222,12 +225,14 @@ if not args.no_db:
     print('OK, I am going to try to migrate the database now...')
 
     db_proc = """mysqldump -u{0} -p{1} -h{2} {3} | sed "s/TIME_ZONE='+00:00'/TIME_ZONE='+06:00'/" | pv | xz -c -4 | ssh {4}@{5} "xz -d -c | mysql -u{6} -p{7} -h{8} {9}" """.format(
-            args.source_db_user, shlex.quote(args.source_db_pass), args.source_db_host, args.source_db_name,
-            args.dest_sftp_user, args.destination, args.dest_db_user, shlex.quote(args.dest_db_pass), args.dest_db_host, args.dest_db_name)
+        args.source_db_user, shlex.quote(args.source_db_pass), args.source_db_host, args.source_db_name,
+        args.dest_sftp_user, args.destination, args.dest_db_user, shlex.quote(args.dest_db_pass), args.dest_db_host,
+        args.dest_db_name)
     if args.verbose:
         print(db_proc)
     try:
-        subprocess.call(db_proc, shell=True)  # This is the "wrong" way to do it, but I can't get the nested Popen's to work
+        subprocess.call(db_proc,
+                        shell=True)  # This is the "wrong" way to do it, but I can't get the nested Popen's to work
     except KeyboardInterrupt:
         exit(0)
 
@@ -235,7 +240,8 @@ if not args.no_db:
 
     if (len(possible_db_refs) == 1) and (len(wp_roots) == 1):
         print('Updating wordpress configuration')
-        wp_install.update_config(user=args.dest_db_user, password=args.dest_db_pass, name=args.dest_db_name, host=args.dest_db_host)
+        wp_install.update_config(user=args.dest_db_user, password=args.dest_db_pass, name=args.dest_db_name,
+                                 host=args.dest_db_host)
     else
         step_placeholder('update database refs')
 
@@ -255,7 +261,8 @@ if args.freshen:
         rsync_verbose = '--verbose '
     else:
         rsync_verbose = ''
-    tar_proc = 'rsync -rtlD --delete {3}{0}/ {1}@{2}:{4}/'.format(site_httpdocs, args.dest_sftp_user, args.destination, rsync_verbose, dest_httpdocs)
+    tar_proc = 'rsync -rtlD --delete {3}{0}/ {1}@{2}:{4}/'.format(site_httpdocs, args.dest_sftp_user, args.destination,
+                                                                  rsync_verbose, dest_httpdocs)
 else:
     tar_proc = 'tar cf - -C {0} . | pv -s {1} | xz -c |  ssh {2}@{3} "tar xJf - -C {4}"'.format(site_httpdocs,
                                                                                                 get_folder_size(
