@@ -31,6 +31,9 @@ parser.add_argument('-dsu', '--dest-sftp-user', help='the username for the custo
 parser.add_argument('-dss', '--dest-sftp-site', help='the site name on the destination server, if different')
 args = parser.parse_args()
 
+if args.dest_sftp_site is None:
+    args.dest_sftp_site = args.site
+
 # Shorthands for me
 
 site_httpdocs = DOCUMENT_ROOT + args.site + '/httpdocs'
@@ -193,8 +196,6 @@ if not args.no_db:
         args.dest_db_pass = getpass.getpass(prompt='Please enter the destination database password: ')
     # if args.dest_sftp_pass is 'prompt':
     #    args.dest_sftp_pass = getpass.getpass(prompt='Please enter the password for the customer SFTP account: ')
-    if args.dest_sftp_site is None:
-        args.dest_sftp_site = args.site
 
 # Verify DNS abilities
 step_placeholder('verify that we can alter DNS')
@@ -219,7 +220,10 @@ if os.path.isfile('{0}/{1}/conf/vhost.conf'.format(DOCUMENT_ROOT, args.site)):
 if not args.no_db:
 
     # Make database (through plesk, to get ref)
-    step_placeholder('create the database {0}'.format(args.dest_db_name))
+    step_placeholder('create the database mysql://{0}/{1}?user={2}&password={3}'.format(args.dest_db_host,
+                                                                                        args.dest_db_name,
+                                                                                        args.dest_db_user,
+                                                                                        args.dest_db_pass))
 
     # Transfer the Database
     print('OK, I am going to try to migrate the database now...')
@@ -242,7 +246,7 @@ if not args.no_db:
         print('Updating wordpress configuration')
         wp_install.update_config(user=args.dest_db_user, password=args.dest_db_pass, name=args.dest_db_name,
                                  host=args.dest_db_host)
-    else
+    else:
         step_placeholder('update database refs')
 
     # Clear magento cache
