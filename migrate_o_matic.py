@@ -25,7 +25,7 @@ parser.add_argument('-sdp', '--source-db-pass', nargs='?',
 parser.add_argument('-ddp', '--dest-db-pass', nargs='?',
                     help='what the password for the user should be, defaults to source-db-pass', const='prompt')
 parser.add_argument('-sdh', '--source-db-host', help='where the database currently resides')
-parser.add_argument('-ddh', '--dest-db-host', help='where the database should go', default='aws-db1.firstscribe.com')
+parser.add_argument('-ddh', '--dest-db-host', help='where the database should go', default='aws-db1.cluster-czcqe9ojhauq.us-east-1.rds.amazonaws.com.')
 parser.add_argument('-dsu', '--dest-sftp-user', help='the username for the customer SFTP account')
 # parser.add_argument('-dsp', '--dest-sftp-pass', help='the password for the customer SFTP account', nargs='?', const='prompt')  # I can't figure out how to do anything with this...
 parser.add_argument('-dss', '--dest-sftp-site', help='the site name on the destination server, if different')
