@@ -180,6 +180,10 @@ if not args.no_db:
         args.source_db_pass = wp_install.password
         args.source_db_user = wp_install.user
 
+    if len(possible_db_refs) = 0
+        print('I did not see any possible database references.  Assuming --no-db, but you should probably check.')
+        args.no_db = True
+
     # Populate the rest of the arguments
 
     if args.dest_db_name is None:
