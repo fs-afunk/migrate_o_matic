@@ -1,4 +1,3 @@
-import re
 
 class WpInstance:
     """A class to represent an installation of WordPress"""

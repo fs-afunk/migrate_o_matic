@@ -6,10 +6,11 @@ import re
 import shlex
 import http.client
 import ssl
+import xml.dom.minidom
 
 
 DOCUMENT_ROOT = '/var/www/vhosts/'
-DATABASE_REFS = 'wp-config.php|etc/local.xml|includes?/(config.xml|connect.php)$'
+DATABASE_REFS = 'wp-config.php|etc/local.xml|includes?/(config.xml|connect.php)'
 
 parser = argparse.ArgumentParser(description='migrate a website from one server to another')
 parser.add_argument('site', help='the site to be migrated')
@@ -109,7 +110,7 @@ class PleskApiClient:
     def set_secret_key(self, secret_key):
         self.secret_key = secret_key
 
-    def getInfo(self, request):
+    def __query(self, request):
         headers = {}
         headers["Content-type"] = "text/xml"
         headers["HTTP_PRETTY_PRINT"] = "TRUE"
@@ -134,6 +135,51 @@ class PleskApiClient:
         data = response.read()
         return data.decode("utf-8")
 
+    def getInfo(self, reqType, reqInfo, reqFilter = None):
+        """
+        Takes the reqType, reqInfo, and reqFilter, and builds an XML request (because who likes to make XML?)
+        Passes said XML to __query to get the XML result, then makes it usable.  Basically, a big DOM wrapper.
+
+        :param reqType: The type of request, can be customer, webspace (subscription), or site (domain)
+        :param reqInfo: The type of information we're looking for.  Probably gen_info or hosting
+        :param reqFilter: A filter to specify what object we're looking for
+        :return: A dict that contains key:value pairs of the data
+        """
+        impl = xml.dom.minidom.getDOMImplementation()
+
+        reqDom = impl.createDocument(None,"request",None)
+
+        packetElm = reqDom.createElement('packet')
+        packetElm.setAttribute('version', '1.6.3.5')
+        customerElm = reqDom.createElement( reqType )
+        getElm = reqDom.createElement('get')
+        reqFilterElm = reqDom.createElement('reqFilter')
+        if reqFilter is not None:
+                reqFilterKeyElm = reqDom.createElement( reqFilter['key'])
+                reqFilterKeyElm.appendChild(reqDom.createTextNode( reqFilter['value']))
+                reqFilterElm.appendChild(reqFilterKeyElm)
+        getElm.appendChild(reqFilterElm)
+        datasetElm = reqDom.createElement( 'dataset' )
+        datasetElm.appendChild(reqDom.createElement( reqInfo ))
+        getElm.appendChild(datasetElm)
+        customerElm.appendChild( getElm )
+        packetElm.appendChild(customerElm)
+        reqDom.appendChild(packetElm)
+        reqDom.formatOutput = True
+
+        response = self.__query(reqDom.saveXML())
+
+        resDom = xml.dom.minidom.parseString(response)
+        reqInfoDom = resDom.getElementsByTagName(reqInfo)[0]
+
+        responseDict = {}
+        for element in reqInfoDom:
+            responseDict[element.nodeName] = element.nodeValue
+
+        return responseDict
+
+
+
 
 def step_placeholder(action):
     print('Did you {0}?'.format(action))
@@ -152,7 +198,8 @@ def get_folder_size(folder):
 
 
 def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipes/577058/
-    """Ask a yes/no question via raw_input() and return their answer.
+    """
+    Ask a yes/no question via raw_input() and return their answer.
 
     "question" is a string that is presented to the user.
     "default" is the presumed answer if the user just hits <Enter>.
@@ -160,7 +207,11 @@ def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipe
         an answer is required of the user).
 
     The "answer" return value is True for "yes" or False for "no".
+    :param question: What's to be asked
+    :param default: The default answer
+    :return: Boolean
     """
+
     valid = {"yes": True, "y": True, "ye": True,
              "no": False, "n": False}
     if default is None:
