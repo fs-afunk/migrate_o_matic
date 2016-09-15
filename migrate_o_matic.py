@@ -177,6 +177,54 @@ class PleskApiClient:
             responseDict[element.nodeName] = element.nodeValue
 
         return responseDict
+    
+    def setInfo(self, setEntity, setType, setInfo, setFilter=None):
+        """
+        Submits a query to the Plesk API to set some information, such as create customer
+        :param setEntity: What type of entity we're modifying - webspace, customer, etc.
+        :param setType: What type of information we're giving plesk, gen_info, hosting, etc.
+        :param setInfo: A dict containing key/value pairs of hosting/gen_info information
+        :param setFilter: A dict with two members, 'key' and 'value' describing what we're modifying
+        :return: Boolean with success
+        """
+        impl = xml.dom.minidom.getDOMImplementation()
+
+        setDom = impl.createDocument(None,"request",None)
+
+        packetElm = setDom.createElement('packet')
+        packetElm.setAttribute('version', '1.6.3.5')
+        customerElm = setDom.createElement( setEntity )
+        getElm = setDom.createElement('set')
+        setFilterElm = setDom.createElement('setFilter')
+        if setFilter is not None:
+                setFilterKeyElm = setDom.createElement( setFilter['key'])
+                setFilterKeyElm.appendChild(setDom.createTextNode( setFilter['value']))
+                setFilterElm.appendChild(setFilterKeyElm)
+        getElm.appendChild(setFilterElm)
+        datasetElm = setDom.createElement( 'dataset' )
+        setTypeElm = setDom.createElement( setType )
+        for infolet in setInfo:
+            infoletElm = setDom.createElement(infolet[0])
+            infoletElm.appendChild(setDom.createTextNode(infolet[1]))
+            setTypeElm.appendChild(infoletElm)
+        datasetElm.appendChild(setTypeElm)
+
+        getElm.appendChild(datasetElm)
+        customerElm.appendChild( getElm )
+        packetElm.appendChild(customerElm)
+        setDom.appendChild(packetElm)
+        setDom.formatOutput = True
+
+        response = self.__query(setDom.saveXML())
+        
+        resDom = xml.dom.minidom.parseString(response)
+        result = resDom.getElementsByTagName('result')
+
+        if result == 'ok':
+            return True
+        else
+            return False
+
 
 
 
