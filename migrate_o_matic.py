@@ -347,8 +347,9 @@ if not args.no_db:
         args.dest_db_pass = args.source_db_pass
     elif args.dest_db_pass is 'prompt':
         args.dest_db_pass = getpass.getpass(prompt='Please enter the destination database password: ')
-    if args.dest_sftp_pass is 'prompt':
-        args.dest_sftp_pass = getpass.getpass(prompt='Please enter the password for the customer SFTP account: ')
+
+if args.dest_sftp_pass is 'prompt':
+    args.dest_sftp_pass = getpass.getpass(prompt='Please enter the password for the customer SFTP account: ')
 
 # Verify DNS abilities
 step_placeholder('verify that we can alter DNS')
@@ -392,7 +393,7 @@ if not args.no_db:
         if args.dest_sftp_pass is None:
             exitcode = subprocess.call(db_proc, shell=True)
         else:
-            child = pexpect.spawn(db_proc, timeout=None)
+            child = pexpect.spawn('/bin/bash', ['-c', db_proc], timeout=None)
             child.expect(['password: '])
             child.sendline(args.dest_sftp_pass)
             child.expect(pexpect.EOF)
@@ -447,7 +448,7 @@ else:
     if args.dest_sftp_pass is None:
         exitcode = subprocess.call(crap_proc, shell=True)
     else:
-        child = pexpect.spawn(crap_proc, timeout=None)
+        child = pexpect.spawn('/bin/bash', ['-c', crap_proc], timeout=None)
         child.expect(['password: '])
         child.sendline(args.dest_sftp_pass)
         child.expect(pexpect.EOF)
@@ -459,7 +460,7 @@ try:
     if args.dest_sftp_pass is None:
         exitcode = subprocess.call(tar_proc, shell=True)
     else:
-        child = pexpect.spawn(tar_proc, timeout=None)
+        child = pexpect.spawn('/bin/bash', ['-c', tar_proc], timeout=None)
         child.expect(['password: '])
         child.sendline(args.dest_sftp_pass)
         child.expect(pexpect.EOF)
