@@ -319,8 +319,7 @@ if not args.no_db:
             print('This setup is too rich for my blood.  Try again manually specifying -sdn, -sdp, and -sdh.')
             exit(2)
 
-    if (len(possible_db_refs) == 1) and (len(wp_roots) == 1) and not (
-            (args.source_db_name is None) or (args.source_db_pass is None) or (args.source_db_host is None)):
+    if (len(possible_db_refs) == 1) and (len(wp_roots) == 1) and (args.source_db_name is None) and (args.source_db_pass is None) and (args.source_db_host is None):
     # Sweet!  Single wordpress install.  I can handle this.
         wp_install = WpInstance(wp_roots[0])
 
@@ -396,6 +395,7 @@ if not args.no_db:
             child = pexpect.spawn('/bin/bash', ['-c', db_proc], timeout=None)
             child.expect(['password: '])
             child.sendline(args.dest_sftp_pass)
+            child.logfile = sys.stdout
             child.expect(pexpect.EOF)
             child.close()
 
@@ -444,13 +444,14 @@ else:
     # The destination directory has crap, clear it out.
     if args.verbose:
         print('Clearing crap')
-    crap_proc = ('ssh', args.dest_sftp_user + '@' + args.destination, 'rm -rf {0}/*'.format(dest_httpdocs))
+    crap_proc = 'ssh {0}@{1} "rm -rf {2}/*"'.format(args.dest_sftp_user, args.destination, dest_httpdocs)
     if args.dest_sftp_pass is None:
         exitcode = subprocess.call(crap_proc, shell=True)
     else:
         child = pexpect.spawn('/bin/bash', ['-c', crap_proc], timeout=None)
         child.expect(['password: '])
         child.sendline(args.dest_sftp_pass)
+        child.logfile = sys.stdout
         child.expect(pexpect.EOF)
         child.close()
 if args.verbose:
@@ -463,6 +464,7 @@ try:
         child = pexpect.spawn('/bin/bash', ['-c', tar_proc], timeout=None)
         child.expect(['password: '])
         child.sendline(args.dest_sftp_pass)
+        child.logfile = sys.stdout
         child.expect(pexpect.EOF)
         child.close()
 
