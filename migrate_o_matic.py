@@ -7,6 +7,7 @@ import shlex
 import http.client
 import ssl
 import xml.dom.minidom
+import pexpect
 
 
 DOCUMENT_ROOT = '/var/www/vhosts/'
@@ -29,9 +30,9 @@ parser.add_argument('-sdp', '--source-db-pass', nargs='?',
 parser.add_argument('-ddp', '--dest-db-pass', nargs='?',
                     help='what the password for the user should be, defaults to source-db-pass', const='prompt')
 parser.add_argument('-sdh', '--source-db-host', help='where the database currently resides')
-parser.add_argument('-ddh', '--dest-db-host', help='where the database should go', default='aws-db1.cluster-czcqe9ojhauq.us-east-1.rds.amazonaws.com.')
+parser.add_argument('-ddh', '--dest-db-host', help='where the database should go', default='aws-db1.cluster-czcqe9ojhauq.us-east-1.rds.amazonaws.com')
 parser.add_argument('-dsu', '--dest-sftp-user', help='the username for the customer SFTP account')
-# parser.add_argument('-dsp', '--dest-sftp-pass', help='the password for the customer SFTP account', nargs='?', const='prompt')  # I can't figure out how to do anything with this...
+parser.add_argument('-dsp', '--dest-sftp-pass', help='the password for the customer SFTP account', nargs='?', const='prompt')
 parser.add_argument('-dss', '--dest-sftp-site', help='the site name on the destination server, if different')
 args = parser.parse_args()
 
@@ -222,17 +223,12 @@ class PleskApiClient:
 
         if result == 'ok':
             return True
-        else
+        else:
             return False
-
-
-
-
 
 def step_placeholder(action):
     print('Did you {0}?'.format(action))
     input('Press enter when done.')
-
 
 def get_folder_size(folder):
     total_size = os.path.getsize(folder)
@@ -243,7 +239,6 @@ def get_folder_size(folder):
         elif os.path.isdir(itempath):
             total_size += get_folder_size(itempath)
     return total_size
-
 
 def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipes/577058/
     """
@@ -282,6 +277,15 @@ def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipe
                              "(or 'y' or 'n').\n")
 
 
+def ssh(host, cmd, user, password, bg_run=False):
+    """SSH'es to a host using the supplied credentials and executes a command.
+    Throws an exception if the command doesn't return 0.
+    bgrun: run command in the background"""
+
+
+
+
+
 if not args.no_db:
     # Let's try to find a wordpress install
 
@@ -315,8 +319,9 @@ if not args.no_db:
             print('This setup is too rich for my blood.  Try again manually specifying -sdn, -sdp, and -sdh.')
             exit(2)
 
-    if (len(possible_db_refs) == 1) and (len(wp_roots) == 1):
-        # Sweet!  Single wordpress install.  I can handle this.
+    if (len(possible_db_refs) == 1) and (len(wp_roots) == 1) and not (
+            (args.source_db_name is None) or (args.source_db_pass is None) or (args.source_db_host is None)):
+    # Sweet!  Single wordpress install.  I can handle this.
         wp_install = WpInstance(wp_roots[0])
 
         args.source_db_host = wp_install.host
@@ -324,7 +329,7 @@ if not args.no_db:
         args.source_db_pass = wp_install.password
         args.source_db_user = wp_install.user
 
-    if len(possible_db_refs) = 0
+    if len(possible_db_refs) == 0:
         print('I did not see any possible database references.  Assuming --no-db, but you should probably check.')
         args.no_db = True
 
@@ -342,8 +347,8 @@ if not args.no_db:
         args.dest_db_pass = args.source_db_pass
     elif args.dest_db_pass is 'prompt':
         args.dest_db_pass = getpass.getpass(prompt='Please enter the destination database password: ')
-    # if args.dest_sftp_pass is 'prompt':
-    #    args.dest_sftp_pass = getpass.getpass(prompt='Please enter the password for the customer SFTP account: ')
+    if args.dest_sftp_pass is 'prompt':
+        args.dest_sftp_pass = getpass.getpass(prompt='Please enter the password for the customer SFTP account: ')
 
 # Verify DNS abilities
 step_placeholder('verify that we can alter DNS')
@@ -368,7 +373,7 @@ if os.path.isfile('{0}/{1}/conf/vhost.conf'.format(DOCUMENT_ROOT, args.site)):
 if not args.no_db:
 
     # Make database (through plesk, to get ref)
-    step_placeholder('create the database mysql://{0}/{1}?user={2}&password={3}'.format(args.dest_db_host,
+    step_placeholder('create the database mysql://{0}/{1}?user={2}&password={3} '.format(args.dest_db_host,
                                                                                         args.dest_db_name,
                                                                                         args.dest_db_user,
                                                                                         args.dest_db_pass))
@@ -383,10 +388,23 @@ if not args.no_db:
     if args.verbose:
         print(db_proc)
     try:
-        subprocess.call(db_proc,
-                        shell=True)  # This is the "wrong" way to do it, but I can't get the nested Popen's to work
+        # This is the "wrong" way to do it, but I can't get the nested Popen's to work
+        if args.dest_sftp_pass is None:
+            exitcode = subprocess.call(db_proc, shell=True)
+        else:
+            child = pexpect.spawn(db_proc, timeout=None)
+            child.expect(['password: '])
+            child.sendline(args.dest_sftp_pass)
+            child.expect(pexpect.EOF)
+            child.close()
+
+            exitcode = child.exitstatus
     except KeyboardInterrupt:
-        exit(0)
+        exit(130)
+
+    if exitcode != 0:
+        print('DB copy failed.  Abort!')
+        exit(1)
 
     # Update the DB refs in local.xmls or wp-config.php
 
@@ -425,14 +443,35 @@ else:
     # The destination directory has crap, clear it out.
     if args.verbose:
         print('Clearing crap')
-    subprocess.call(('ssh', args.dest_sftp_user + '@' + args.destination, 'rm -rf {0}/*'.format(dest_httpdocs)))
+    crap_proc = ('ssh', args.dest_sftp_user + '@' + args.destination, 'rm -rf {0}/*'.format(dest_httpdocs))
+    if args.dest_sftp_pass is None:
+        exitcode = subprocess.call(crap_proc, shell=True)
+    else:
+        child = pexpect.spawn(crap_proc, timeout=None)
+        child.expect(['password: '])
+        child.sendline(args.dest_sftp_pass)
+        child.expect(pexpect.EOF)
+        child.close()
 if args.verbose:
     print(tar_proc)
-
 try:
-    subprocess.call(tar_proc, shell=True)
+    # This is the "wrong" way to do it, but I can't get the nested Popen's to work
+    if args.dest_sftp_pass is None:
+        exitcode = subprocess.call(tar_proc, shell=True)
+    else:
+        child = pexpect.spawn(tar_proc, timeout=None)
+        child.expect(['password: '])
+        child.sendline(args.dest_sftp_pass)
+        child.expect(pexpect.EOF)
+        child.close()
+
+        exitcode = child.exitstatus
 except KeyboardInterrupt:
-    exit(0)
+    exit(130)
+
+if exitcode != 0:
+    print('Site copy failed.  Abort!')
+    exit(1)
 
 # If we host DNS, copy records
 step_placeholder('update new DNS if on plesk')
