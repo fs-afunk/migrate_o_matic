@@ -5,9 +5,12 @@ import getpass
 import re
 import shlex
 import http.client
-import ssl
-import xml.dom.minidom
+import xml.etree.ElementTree as ET
 import pexpect
+import sys
+import socket
+import random
+import string
 
 
 DOCUMENT_ROOT = '/var/www/vhosts/'
@@ -34,6 +37,17 @@ parser.add_argument('-ddh', '--dest-db-host', help='where the database should go
 parser.add_argument('-dsu', '--dest-sftp-user', help='the username for the customer SFTP account')
 parser.add_argument('-dsp', '--dest-sftp-pass', help='the password for the customer SFTP account', nargs='?', const='prompt')
 parser.add_argument('-dss', '--dest-sftp-site', help='the site name on the destination server, if different')
+
+parser.add_argument('--no-plesk', help="don't try to mess with plesk", action='store_true')
+parser.add_argument('-sph', '--source-plesk-host', help='the hostname of the source plesk instance, defaults to the current host', default=socket.gethostname())
+parser.add_argument('-spu', '--source-plesk-user', help='the username of the source plesk instance, defaults to admin', default='admin')
+parser.add_argument('-spp', '--source-plesk-pass', help='the password of the source plesk instance, defaults to prompt', nargs='?', const='prompt')
+parser.add_argument('-dph', '--dest-plesk-host', help='the hostname of the destination plesk instance, defaults to the current host')
+parser.add_argument('-dpu', '--dest-plesk-user', help='the username of the destination plesk instance, defaults to admin', default='admin')
+parser.add_argument('-dpp', '--dest-plesk-pass', help='the password of the destination  plesk instance, defaults to prompt', nargs='?', const='prompt')
+parser.add_argument('-ec', '--existing-customer', help='the login id of the customer to append to')
+parser.add_argument('-nc', '--new-customer', help='the name of the customer as it should appear in plesk')
+
 args = parser.parse_args()
 
 if args.dest_sftp_site is None:
@@ -44,6 +58,11 @@ if args.dest_sftp_site is None:
 site_httpdocs = DOCUMENT_ROOT + args.site + '/httpdocs'
 dest_httpdocs = DOCUMENT_ROOT + args.dest_sftp_site + '/httpdocs'
 
+# Before we get too far, let's make sure we didn't fat finger the site name...
+
+if not os.path.isfile(site_httpdocs):
+    print('I cannot find that site.  Make sure you typed it correctly.')
+    exit(1)
 
 class WpInstance:
     """A class to represent an installation of WordPress"""
@@ -94,6 +113,7 @@ class WpInstance:
         self.password = password
         self.host = host
 
+
 class PleskApiClient:
     """A class to interact with Plesk Installations"""
 
@@ -136,99 +156,180 @@ class PleskApiClient:
         data = response.read()
         return data.decode("utf-8")
 
-    def getInfo(self, reqType, reqInfo, reqFilter = None):
+    def get_info(self, req_type, req_info, req_filter=None):
         """
         Takes the reqType, reqInfo, and reqFilter, and builds an XML request (because who likes to make XML?)
-        Passes said XML to __query to get the XML result, then makes it usable.  Basically, a big DOM wrapper.
+        Passes said XML to __query to get the XML result, then makes it usable.
 
-        :param reqType: The type of request, can be customer, webspace (subscription), or site (domain)
-        :param reqInfo: The type of information we're looking for.  Probably gen_info or hosting
-        :param reqFilter: A filter to specify what object we're looking for
-        :return: A dict that contains key:value pairs of the data
+        :param req_type: The type of request, can be customer, webspace (subscription), or site (domain)
+        :param req_info: The type of information we're looking for.  Probably gen_info or hosting
+        :param req_filter: A filter to specify what object we're looking for
+        :return: An XML element object rooted at the response section.  Returns False if entity not found
         """
-        impl = xml.dom.minidom.getDOMImplementation()
 
-        reqDom = impl.createDocument(None,"request",None)
+        packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
+        req_type_elm = ET.SubElement(packet_elm, req_type)
+        get_elm = ET.SubElement(req_type_elm, 'get')
+        req_filter_elm = ET.SubElement(get_elm, 'filter')
+        if req_filter:
+            for entity_filter in req_filter.items():
+                req_filter_key_elm = ET.SubElement(req_filter_elm, entity_filter[0])
+                req_filter_key_elm.text = entity_filter[1]
+        dataset_elm = ET.SubElement(get_elm, 'dataset')
+        ET.SubElement(dataset_elm, req_info)
+        response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+        res_et = ET.fromstring(response)
 
-        packetElm = reqDom.createElement('packet')
-        packetElm.setAttribute('version', '1.6.3.5')
-        customerElm = reqDom.createElement( reqType )
-        getElm = reqDom.createElement('get')
-        reqFilterElm = reqDom.createElement('reqFilter')
-        if reqFilter is not None:
-                reqFilterKeyElm = reqDom.createElement( reqFilter['key'])
-                reqFilterKeyElm.appendChild(reqDom.createTextNode( reqFilter['value']))
-                reqFilterElm.appendChild(reqFilterKeyElm)
-        getElm.appendChild(reqFilterElm)
-        datasetElm = reqDom.createElement( 'dataset' )
-        datasetElm.appendChild(reqDom.createElement( reqInfo ))
-        getElm.appendChild(datasetElm)
-        customerElm.appendChild( getElm )
-        packetElm.appendChild(customerElm)
-        reqDom.appendChild(packetElm)
-        reqDom.formatOutput = True
+        if res_et.find('.//status').text == 'error':
+            return False
+        else:
+            return res_et.find('.//id').text
 
-        response = self.__query(reqDom.saveXML())
+    def get_customer_id(self, login_id):
+        """
+        Takes the reqType, reqInfo, and reqFilter, and builds an XML request (because who likes to make XML?)
+        Passes said XML to __query to get the XML result, then makes it usable.
 
-        resDom = xml.dom.minidom.parseString(response)
-        reqInfoDom = resDom.getElementsByTagName(reqInfo)[0]
+        :param login_id: The username for the control panel user
+        :return: A list with the customer id and the customer pretty name.  Returns False if entity not found
+        """
 
-        responseDict = {}
-        for element in reqInfoDom:
-            responseDict[element.nodeName] = element.nodeValue
+        packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
+        req_type_elm = ET.SubElement(packet_elm, 'customer')
+        get_elm = ET.SubElement(req_type_elm, 'get')
+        req_filter_elm = ET.SubElement(get_elm, 'filter')
+        req_filter_key_elm = ET.SubElement(req_filter_elm, 'login')
+        req_filter_key_elm.text = login_id
+        dataset_elm = ET.SubElement(get_elm, 'dataset')
+        ET.SubElement(dataset_elm, 'gen_info')
+        print(ET.tostring(packet_elm, 'utf-8'))
+        response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+        print(response)
+        res_et = ET.fromstring(response)
 
-        return responseDict
-    
-    def setInfo(self, setEntity, setType, setInfo, setFilter=None):
+        if res_et.find('.//status').text == 'error':
+            return False
+        else:
+            returnee = []
+            returnee[0] = res_et.find('.//id').text
+            returnee[1] = res_et.find('.//pname').text
+            return returnee
+
+    def set_info(self, set_entity, set_type, set_info, set_filter=None):
         """
         Submits a query to the Plesk API to set some information, such as create customer
-        :param setEntity: What type of entity we're modifying - webspace, customer, etc.
-        :param setType: What type of information we're giving plesk, gen_info, hosting, etc.
-        :param setInfo: A dict containing key/value pairs of hosting/gen_info information
-        :param setFilter: A dict with two members, 'key' and 'value' describing what we're modifying
+        :param set_entity: What type of entity we're modifying - webspace, customer, etc.
+        :param set_type: What type of information we're giving plesk - gen_info, hosting, etc.
+        :param set_info: A dict containing key/value pairs of hosting/gen_info information
+        :param set_filter: A dict with two members, 'key' and 'value' describing what we're modifying
         :return: Boolean with success
         """
-        impl = xml.dom.minidom.getDOMImplementation()
+        packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
+        set_entity_elm = ET.SubElement(packet_elm, set_entity)
+        set_elm = ET.SubElement(set_entity_elm, 'set')
+        set_filter_elm = ET.SubElement(set_elm, 'filter')
+        if set_filter:
+                reqFilterKeyElm = ET.SubElement(set_filter_elm, set_filter['key'])
+                reqFilterKeyElm.text = set_filter['value']
+        dataset_elm = ET.SubElement(set_elm, 'dataset')
+        setTypeElm = ET.SubElement(dataset_elm, set_type)
+        for infolet in set_info.items():
+            infolet_elm = ET.SubElement(setTypeElm, infolet[0])
+            infolet_elm.text = infolet[1]
 
-        setDom = impl.createDocument(None,"request",None)
+        response = self.__query(ET.tostring(packet_elm, 'utf-8'))
 
-        packetElm = setDom.createElement('packet')
-        packetElm.setAttribute('version', '1.6.3.5')
-        customerElm = setDom.createElement( setEntity )
-        getElm = setDom.createElement('set')
-        setFilterElm = setDom.createElement('setFilter')
-        if setFilter is not None:
-                setFilterKeyElm = setDom.createElement( setFilter['key'])
-                setFilterKeyElm.appendChild(setDom.createTextNode( setFilter['value']))
-                setFilterElm.appendChild(setFilterKeyElm)
-        getElm.appendChild(setFilterElm)
-        datasetElm = setDom.createElement( 'dataset' )
-        setTypeElm = setDom.createElement( setType )
-        for infolet in setInfo:
-            infoletElm = setDom.createElement(infolet[0])
-            infoletElm.appendChild(setDom.createTextNode(infolet[1]))
-            setTypeElm.appendChild(infoletElm)
-        datasetElm.appendChild(setTypeElm)
+        res_elm = ET.fromstring(response)
+        res_info_elm = res_elm.find('result')
 
-        getElm.appendChild(datasetElm)
-        customerElm.appendChild( getElm )
-        packetElm.appendChild(customerElm)
-        setDom.appendChild(packetElm)
-        setDom.formatOutput = True
-
-        response = self.__query(setDom.saveXML())
-        
-        resDom = xml.dom.minidom.parseString(response)
-        result = resDom.getElementsByTagName('result')
-
-        if result == 'ok':
+        if res_info_elm.text == 'ok':
             return True
         else:
             return False
 
+    def add_webspace(self, gen_info, hosting_type, hosting_info, hosting_ip, hosting_plan):
+        """
+        Creates an entity in plesk of type add_entity, and pre-populates it with information.
+
+        :param gen_info: A dict containing key/value pairs of gen_info information
+        :param hosting_type: If creating a webspace or forward, what kind of entity we're creating
+        :param hosting_info: If creating a webspace or forward, a dict containing key/value pairs of hosting information
+        :param hosting_plan: If creating a webspace, which plan to use
+        :param hosting_ip: If creating a webspace, which IP address to bind to
+        :return: id of created entity
+        """
+
+        packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
+        add_entity_elm = ET.SubElement(packet_elm, 'webspace')
+        add_elm = ET.SubElement(add_entity_elm, 'add')
+        gen_info_elm = ET.SubElement(add_elm, 'gen_info')
+        for infolet in gen_info.items():
+            infolet_elm = ET.SubElement(gen_info_elm, infolet[0])
+            infolet_elm.text = infolet[1]
+        hosting_elm = ET.SubElement(add_elm, 'hosting')
+        hosting_type_elm = ET.SubElement(hosting_elm, hosting_type)
+        for hostlet in hosting_info.items():
+            property_elm = ET.SubElement(hosting_type_elm, 'property')
+            hostlet_name_elm = ET.SubElement(property_elm, 'name')
+            hostlet_name_elm.text = hostlet[0]
+            hostlet_value_elm = ET.SubElement(property_elm, 'value')
+            hostlet_value_elm.text = hostlet[1]
+        hosting_ip_elm = ET.SubElement(hosting_type_elm, 'ip_address')
+        hosting_ip_elm.text = hosting_ip
+        hosting_plan_elm = ET.SubElement(add_elm, 'plan-name')
+        hosting_plan_elm.text = hosting_plan
+
+        response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+
+        res_elm = ET.fromstring(response)
+
+        if res_elm.find('.//status').text == 'ok':
+            return True
+        else:
+            return False
+172.31.52.138
+
+    def add_customer(self, customer_name):
+        """
+        Creates an entity in plesk of type add_entity, and pre-populates it with information.
+
+        :param customer_name: A pretty version of the customer's name.
+        :return: id of created entity
+        """
+
+        packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
+        add_entity_elm = ET.SubElement(packet_elm, 'customer')
+        add_elm = ET.SubElement(add_entity_elm, 'add')
+        gen_info_elm = ET.SubElement(add_elm, 'gen_info')
+        pname_elm = ET.SubElement(gen_info_elm, 'pname')
+        pname_elm.text = customer_name
+        login_elm = ET.SubElement(gen_info_elm, 'login')
+
+        # Make a friendly customer login - strip out non-alphanum, limit to 20 characters, add _cp
+        login_id = re.sub('[\W_]+', '', customer_name).lower()[:20] + '_cp'
+        login_elm.text = login_id
+
+        passwd_elm = ET.SubElement(gen_info_elm, 'passwd')
+        passwd_elm.text = ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.ascii_lowercase +
+                                                               string.digits + '!@#$%^&*()/[]{}') for _ in range(34))
+
+        email_elm = ET.SubElement(gen_info_elm, 'email')
+        email_elm.text = 'hostmaster@firstscribe.com'
+
+        response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+        res_elm = ET.fromstring(response)
+
+        if res_elm.find('.//status').text == 'ok':
+            return res_elm.find('.//id').text
+        else:
+            return False
+
+
+
 def step_placeholder(action):
     print('Did you {0}?'.format(action))
     input('Press enter when done.')
+
 
 def get_folder_size(folder):
     total_size = os.path.getsize(folder)
@@ -239,6 +340,7 @@ def get_folder_size(folder):
         elif os.path.isdir(itempath):
             total_size += get_folder_size(itempath)
     return total_size
+
 
 def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipes/577058/
     """
@@ -276,16 +378,6 @@ def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipe
             sys.stdout.write("Please respond with 'yes' or 'no' "
                              "(or 'y' or 'n').\n")
 
-
-def ssh(host, cmd, user, password, bg_run=False):
-    """SSH'es to a host using the supplied credentials and executes a command.
-    Throws an exception if the command doesn't return 0.
-    bgrun: run command in the background"""
-
-
-
-
-
 if not args.no_db:
     # Let's try to find a wordpress install
 
@@ -310,16 +402,14 @@ if not args.no_db:
             if db_ref_regexr.search(full_path):
                 possible_db_refs.append(full_path)
 
-    if len(possible_db_refs) > 1:
-        if (not (not (args.source_db_name is None) and not (args.source_db_pass is None) and not (
-                    args.source_db_host is None))):
-            print('I see possible database references in:')
-            for item in possible_db_refs:
-                print(item)
-            print('This setup is too rich for my blood.  Try again manually specifying -sdn, -sdp, and -sdh.')
-            exit(2)
+    if (len(possible_db_refs) > 1) and not all((args.source_db_name, args.source_db_pass, args.source_db_host)):
+        print('I see possible database references in:')
+        for item in possible_db_refs:
+            print(item)
+        print('This setup is too rich for my blood.  Try again manually specifying -sdn, -sdp, and -sdh.')
+        exit(2)
 
-    if (len(possible_db_refs) == 1) and (len(wp_roots) == 1) and (args.source_db_name is None) and (args.source_db_pass is None) and (args.source_db_host is None):
+    if (len(possible_db_refs) == 1) and (len(wp_roots) == 1) and not any(args.source_db_name, args.source_db_pass, args.source_db_host):
     # Sweet!  Single wordpress install.  I can handle this.
         wp_install = WpInstance(wp_roots[0])
 
@@ -350,8 +440,30 @@ if not args.no_db:
 if args.dest_sftp_pass is 'prompt':
     args.dest_sftp_pass = getpass.getpass(prompt='Please enter the password for the customer SFTP account: ')
 
-# Verify DNS abilities
-step_placeholder('verify that we can alter DNS')
+if not args.no_plesk:
+    if args.source_plesk_pass is 'prompt':
+        args.source_plesk_pass = getpass.getpass(prompt="Please enter the password for {0}'s {1} account: ".format(args.source_plesk_host, args.source_plesk_user))
+    if args.dest_plesk_pass is 'prompt':
+        args.dest_plesk_pass = getpass.getpass(prompt="Please enter the password for {0}'s {1} account: ".format(args.dest_plesk_host, args.dest_plesk_user))
+    if not all((args.source_plesk_host, args.source_plesk_user, args.source_plesk_pass, args.dest_plesk_host,
+                args.dest_plesk_user, args.dest_plesk_pass)) and any((args.new-customer, args.existing_customer)):
+        print('If I am to modify plesk, I will need the host, user, and password for both instances as well as a customer name')
+        exit(1)
+
+    # Now that that's taken care of
+
+    source_plesk = PleskApiClient(args.source_plesk_host)
+    source_plesk.set_credentials(args.source_plesk_user, args.source_plesk_pass)
+    destination_plesk = PleskApiClient(args.dest_plesk_host)
+    destination_plesk.set_credentials(args.dest_plesk_user, args.dest_plesk_pass)
+
+    if args.existing_customer:
+        customer_id = destination_plesk(args.existing_customer)
+    else:
+        customer_id = destination_plesk.add_customer(args.new_customer)
+
+
+
 
 # Create new customer/domains on plesk
 step_placeholder('make the new customer in plesk - use bash as shell')
@@ -392,7 +504,7 @@ if not args.no_db:
         if args.dest_sftp_pass is None:
             exitcode = subprocess.call(db_proc, shell=True)
         else:
-            child = pexpect.spawn('/bin/bash', ['-c', db_proc], timeout=None)
+            child = pexpect.spawnu('/bin/bash', ['-c', db_proc], timeout=None)
             child.expect(['password: '])
             child.sendline(args.dest_sftp_pass)
             child.logfile = sys.stdout
@@ -448,7 +560,7 @@ else:
     if args.dest_sftp_pass is None:
         exitcode = subprocess.call(crap_proc, shell=True)
     else:
-        child = pexpect.spawn('/bin/bash', ['-c', crap_proc], timeout=None)
+        child = pexpect.spawnu('/bin/bash', ['-c', crap_proc], timeout=None)
         child.expect(['password: '])
         child.sendline(args.dest_sftp_pass)
         child.logfile = sys.stdout
@@ -461,7 +573,7 @@ try:
     if args.dest_sftp_pass is None:
         exitcode = subprocess.call(tar_proc, shell=True)
     else:
-        child = pexpect.spawn('/bin/bash', ['-c', tar_proc], timeout=None)
+        child = pexpect.spawnu('/bin/bash', ['-c', tar_proc], timeout=None)
         child.expect(['password: '])
         child.sendline(args.dest_sftp_pass)
         child.logfile = sys.stdout
@@ -486,12 +598,8 @@ step_placeholder('test the site in the new location')
 step_placeholder('update the real DNS')
 
 # Transfer cron jobs
-if not args.no_db:
-    if len(magento_roots) != 0:
-        step_placeholder('transfer any cron jobs')
+if not args.no_db and (len(magento_roots) != 0):
+    step_placeholder('transfer any cron jobs')
 
 # Transfer cron jobs
 step_placeholder('switch that shell back')
-
-# Disable old site next day
-step_placeholder('make a reminder to disable the site the next day')
