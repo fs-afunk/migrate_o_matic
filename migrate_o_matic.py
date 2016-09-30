@@ -42,9 +42,10 @@ parser.add_argument('--no-plesk', help="don't try to mess with plesk", action='s
 parser.add_argument('-sph', '--source-plesk-host', help='the hostname of the source plesk instance, defaults to the current host', default=socket.gethostname())
 parser.add_argument('-spu', '--source-plesk-user', help='the username of the source plesk instance, defaults to admin', default='admin')
 parser.add_argument('-spp', '--source-plesk-pass', help='the password of the source plesk instance, defaults to prompt', nargs='?', const='prompt')
-parser.add_argument('-dph', '--dest-plesk-host', help='the hostname of the destination plesk instance, defaults to the current host')
+parser.add_argument('-dph', '--dest-plesk-host', help='the hostname of the destination plesk instance')
 parser.add_argument('-dpu', '--dest-plesk-user', help='the username of the destination plesk instance, defaults to admin', default='admin')
-parser.add_argument('-dpp', '--dest-plesk-pass', help='the password of the destination  plesk instance, defaults to prompt', nargs='?', const='prompt')
+parser.add_argument('-dpp', '--dest-plesk-pass', help='the password of the destination plesk instance, defaults to prompt', nargs='?', const='prompt')
+parser.add_argument('-dpi', '--dest-plesk-ip', help='the ip address of the destination plesk instance')
 parser.add_argument('-ec', '--existing-customer', help='the login id of the customer to append to')
 parser.add_argument('-nc', '--new-customer', help='the name of the customer as it should appear in plesk')
 
@@ -247,23 +248,25 @@ class PleskApiClient:
         else:
             return False
 
-    def add_webspace(self, gen_info, hosting_type, hosting_info, hosting_ip, hosting_plan):
+    def add_webspace(self, gen_setup, hosting_type, hosting_info, hosting_ip, hosting_plan):
         """
         Creates an entity in plesk of type add_entity, and pre-populates it with information.
 
-        :param gen_info: A dict containing key/value pairs of gen_info information
+        :param gen_setup: A dict containing key/value pairs of gen_info information
         :param hosting_type: If creating a webspace or forward, what kind of entity we're creating
         :param hosting_info: If creating a webspace or forward, a dict containing key/value pairs of hosting information
         :param hosting_plan: If creating a webspace, which plan to use
         :param hosting_ip: If creating a webspace, which IP address to bind to
-        :return: id of created entity
+        :return: list with status and Id if success, or
         """
 
         packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
         add_entity_elm = ET.SubElement(packet_elm, 'webspace')
         add_elm = ET.SubElement(add_entity_elm, 'add')
-        gen_info_elm = ET.SubElement(add_elm, 'gen_info')
-        for infolet in gen_info.items():
+        gen_info_elm = ET.SubElement(add_elm, 'gen_setup')
+        gen_setup['htype'] = hosting_type
+        gen_setup['ip_address'] = hosting_ip
+        for infolet in gen_setup.items():
             infolet_elm = ET.SubElement(gen_info_elm, infolet[0])
             infolet_elm.text = infolet[1]
         hosting_elm = ET.SubElement(add_elm, 'hosting')
@@ -284,10 +287,9 @@ class PleskApiClient:
         res_elm = ET.fromstring(response)
 
         if res_elm.find('.//status').text == 'ok':
-            return True
+            return ['ok', res_elm.find('.//id').text]
         else:
-            return False
-172.31.52.138
+            return [res_elm.find('.//status').text, res_elm.find('.//errtext').text]
 
     def add_customer(self, customer_name):
         """
@@ -446,7 +448,7 @@ if not args.no_plesk:
     if args.dest_plesk_pass is 'prompt':
         args.dest_plesk_pass = getpass.getpass(prompt="Please enter the password for {0}'s {1} account: ".format(args.dest_plesk_host, args.dest_plesk_user))
     if not all((args.source_plesk_host, args.source_plesk_user, args.source_plesk_pass, args.dest_plesk_host,
-                args.dest_plesk_user, args.dest_plesk_pass)) and any((args.new-customer, args.existing_customer)):
+                args.dest_plesk_user, args.dest_plesk_pass, args.dest_plesk_ip)) and any((args.new-customer, args.existing_customer)):
         print('If I am to modify plesk, I will need the host, user, and password for both instances as well as a customer name')
         exit(1)
 
@@ -457,10 +459,31 @@ if not args.no_plesk:
     destination_plesk = PleskApiClient(args.dest_plesk_host)
     destination_plesk.set_credentials(args.dest_plesk_user, args.dest_plesk_pass)
 
+    print('Creating customer... ', end='')
     if args.existing_customer:
         customer_id = destination_plesk(args.existing_customer)
     else:
         customer_id = destination_plesk.add_customer(args.new_customer)
+    if customer_id:
+        print('OK')
+    else:
+        print('')
+        print('Failed to create customer!')
+        exit(1)
+
+    print('Creating site... ', end='')
+    webspace_result = destination_plesk.add_webspace({'name': args.site, 'owner-id': customer_id}, 'vrt_hst',
+                                                     {'ftp_login': args.dest_sftp_user,
+                                                      'ftp_password': args.dest_sftp_pass, 'shell': '/bin/bash'},
+                                                     args.dest_plesk_ip, 'Default Domain')
+
+    if webspace_result[0] != 'ok':
+        print('OK')
+    else:
+        print('')
+        print('Failed to create site!')
+        print('{0}: {1}'.format(webspace_result[0], webspace_result[1]))
+        exit(1)
 
 
 
