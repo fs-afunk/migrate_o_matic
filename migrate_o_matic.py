@@ -1,17 +1,17 @@
 import argparse
-import subprocess
-import os
 import getpass
+import http.client
+import os
+import random
 import re
 import shlex
-import http.client
-import xml.etree.ElementTree as ET
-import pexpect
-import sys
 import socket
-import random
 import string
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
 
+import pexpect
 
 DOCUMENT_ROOT = '/var/www/vhosts/'
 DATABASE_REFS = 'wp-config.php|etc/local.xml|includes?/(config.xml|connect.php)'
@@ -248,6 +248,40 @@ class PleskApiClient:
         else:
             return False
 
+    def set_webspace(self, hosting_info, site_id):
+        """
+        Creates an entity in plesk of type add_entity, and pre-populates it with information.
+
+        :param hosting_info: A dict containing key/value pairs of hosting information
+        :param site_id: This is the ID for the site to update
+        :return: list with status and Id if success, or status and error if failure
+        """
+
+        packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
+        set_entity_elm = ET.SubElement(packet_elm, 'webspace')
+        set_elm = ET.SubElement(set_entity_elm, 'set')
+        filter_elm = ET.SubElement(set_elm, 'filter')
+        id_elm = ET.SubElement(filter_elm, 'id')
+        id_elm.text = site_id
+        values_elm = ET.SubElement(set_elm, 'values')
+        hosting_elm = ET.SubElement(values_elm, 'hosting')
+        vrt_hst_elm = ET.SubElement(hosting_elm, 'vrt_hst')
+        for hostlet in hosting_info.items():
+            property_elm = ET.SubElement(vrt_hst_elm, 'property')
+            hostlet_name_elm = ET.SubElement(property_elm, 'name')
+            hostlet_name_elm.text = hostlet[0]
+            hostlet_value_elm = ET.SubElement(property_elm, 'value')
+            hostlet_value_elm.text = hostlet[1]
+
+        response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+
+        res_elm = ET.fromstring(response)
+
+        if res_elm.find('.//status').text == 'ok':
+            return ['ok', res_elm.find('.//id').text]
+        else:
+            return [res_elm.find('.//status').text, res_elm.find('.//errtext').text]
+
     def add_webspace(self, gen_setup, hosting_type, hosting_info, hosting_ip, hosting_plan):
         """
         Creates an entity in plesk of type add_entity, and pre-populates it with information.
@@ -257,7 +291,7 @@ class PleskApiClient:
         :param hosting_info: If creating a webspace or forward, a dict containing key/value pairs of hosting information
         :param hosting_plan: If creating a webspace, which plan to use
         :param hosting_ip: If creating a webspace, which IP address to bind to
-        :return: list with status and Id if success, or
+        :return: list with status and Id if success, or status and error if failure
         """
 
         packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
@@ -442,13 +476,15 @@ if not args.no_db:
 if args.dest_sftp_pass is 'prompt':
     args.dest_sftp_pass = getpass.getpass(prompt='Please enter the password for the customer SFTP account: ')
 
+# Create new customer/domains on plesk
+
 if not args.no_plesk:
     if args.source_plesk_pass is 'prompt':
         args.source_plesk_pass = getpass.getpass(prompt="Please enter the password for {0}'s {1} account: ".format(args.source_plesk_host, args.source_plesk_user))
     if args.dest_plesk_pass is 'prompt':
         args.dest_plesk_pass = getpass.getpass(prompt="Please enter the password for {0}'s {1} account: ".format(args.dest_plesk_host, args.dest_plesk_user))
     if not all((args.source_plesk_host, args.source_plesk_user, args.source_plesk_pass, args.dest_plesk_host,
-                args.dest_plesk_user, args.dest_plesk_pass, args.dest_plesk_ip)) and any((args.new-customer, args.existing_customer)):
+                args.dest_plesk_user, args.dest_plesk_pass, args.dest_plesk_ip)) and any((args.new_customer, args.existing_customer)):
         print('If I am to modify plesk, I will need the host, user, and password for both instances as well as a customer name')
         exit(1)
 
@@ -485,11 +521,8 @@ if not args.no_plesk:
         print('{0}: {1}'.format(webspace_result[0], webspace_result[1]))
         exit(1)
 
-
-
-
-# Create new customer/domains on plesk
-step_placeholder('make the new customer in plesk - use bash as shell')
+else:
+    step_placeholder('make the new customer in plesk - use bash as shell')
 
 # Copy SSL certs if any
 step_placeholder('copy the SSL certificates')
@@ -624,5 +657,19 @@ step_placeholder('update the real DNS')
 if not args.no_db and (len(magento_roots) != 0):
     step_placeholder('transfer any cron jobs')
 
-# Transfer cron jobs
-step_placeholder('switch that shell back')
+# Switch shell back to /chroot
+if not args.no_plesk:
+    print('Switching shell back to chroot... ', end='')
+    shell_result = destination_plesk.set_webspace({'shell': '/usr/local/psa/bin/chrootsh'}, webspace_result[1])
+
+    if shell_result[0] != 'ok':
+        print('OK')
+    else:
+        print('')
+        print('Failed to switch the shell back.  Take a look.')
+        print('{0}: {1}'.format(webspace_result[0], webspace_result[1]))
+        exit(1)
+else:
+    step_placeholder('switch that shell back')
+
+exit(0)
