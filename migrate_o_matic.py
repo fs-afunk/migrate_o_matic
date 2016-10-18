@@ -562,7 +562,7 @@ if not args.no_plesk:
                                                       'ftp_password': args.dest_sftp_pass, 'shell': '/bin/bash'},
                                                      args.dest_plesk_ip, 'Default Domain')
 
-    if webspace_result[0] != 'ok':
+    if webspace_result[0] == 'ok':
         print('OK')
     else:
         print('')
@@ -711,7 +711,7 @@ if not args.no_plesk:
     print('Switching shell back to chroot... ', end='')
     shell_result = destination_plesk.set_webspace({'shell': '/usr/local/psa/bin/chrootsh'}, webspace_result[1])
 
-    if shell_result[0] != 'ok':
+    if shell_result[0] == 'ok':
         print('OK')
     else:
         print('')
