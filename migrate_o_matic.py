@@ -61,7 +61,7 @@ dest_httpdocs = DOCUMENT_ROOT + args.dest_sftp_site + '/httpdocs'
 
 # Before we get too far, let's make sure we didn't fat finger the site name...
 
-if not os.path.isfile(site_httpdocs):
+if not os.path.isdir(site_httpdocs):
     print('I cannot find that site.  Make sure you typed it correctly.')
     exit(1)
 
@@ -118,12 +118,13 @@ class WpInstance:
 class PleskApiClient:
     """A class to interact with Plesk Installations"""
 
-    def __init__(self, host, port=8443, protocol='https', ssl_unverified=False):
+    def __init__(self, host, port=8443, protocol='https', ssl_unverified=False, verbose=False):
         self.host = host
         self.port = port
         self.protocol = protocol
         self.secret_key = None
         self.ssl_unverified = ssl_unverified
+        self.verbose = verbose
 
     def set_credentials(self, login, password):
         self.login = login
@@ -178,7 +179,15 @@ class PleskApiClient:
                 req_filter_key_elm.text = entity_filter[1]
         dataset_elm = ET.SubElement(get_elm, 'dataset')
         ET.SubElement(dataset_elm, req_info)
+
+        if self.verbose:
+            print(ET.tostring(packet_elm, 'utf-8'))
+
         response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+
+        if self.verbose:
+            print(response)
+
         res_et = ET.fromstring(response)
 
         if res_et.find('.//status').text == 'error':
@@ -203,9 +212,15 @@ class PleskApiClient:
         req_filter_key_elm.text = login_id
         dataset_elm = ET.SubElement(get_elm, 'dataset')
         ET.SubElement(dataset_elm, 'gen_info')
-        print(ET.tostring(packet_elm, 'utf-8'))
+
+        if self.verbose:
+            print(ET.tostring(packet_elm, 'utf-8'))
+
         response = self.__query(ET.tostring(packet_elm, 'utf-8'))
-        print(response)
+
+        if self.verbose:
+            print(response)
+
         res_et = ET.fromstring(response)
 
         if res_et.find('.//status').text == 'error':
@@ -238,7 +253,13 @@ class PleskApiClient:
             infolet_elm = ET.SubElement(setTypeElm, infolet[0])
             infolet_elm.text = infolet[1]
 
+        if self.verbose:
+            print(ET.tostring(packet_elm, 'utf-8'))
+
         response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+
+        if self.verbose:
+            print(response)
 
         res_elm = ET.fromstring(response)
         res_info_elm = res_elm.find('result')
@@ -273,7 +294,13 @@ class PleskApiClient:
             hostlet_value_elm = ET.SubElement(property_elm, 'value')
             hostlet_value_elm.text = hostlet[1]
 
+        if self.verbose:
+            print(ET.tostring(packet_elm, 'utf-8'))
+
         response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+
+        if self.verbose:
+            print(response)
 
         res_elm = ET.fromstring(response)
 
@@ -316,7 +343,13 @@ class PleskApiClient:
         hosting_plan_elm = ET.SubElement(add_elm, 'plan-name')
         hosting_plan_elm.text = hosting_plan
 
+        if self.verbose:
+            print(ET.tostring(packet_elm, 'utf-8'))
+
         response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+
+        if self.verbose:
+            print(response)
 
         res_elm = ET.fromstring(response)
 
@@ -352,7 +385,14 @@ class PleskApiClient:
         email_elm = ET.SubElement(gen_info_elm, 'email')
         email_elm.text = 'hostmaster@firstscribe.com'
 
+        if self.verbose:
+            print(ET.tostring(packet_elm, 'utf-8'))
+
         response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+
+        if self.verbose:
+            print(response)
+
         res_elm = ET.fromstring(response)
 
         if res_elm.find('.//status').text == 'ok':
@@ -479,6 +519,8 @@ if args.dest_sftp_pass is 'prompt':
 # Create new customer/domains on plesk
 
 if not args.no_plesk:
+    if not args.dest_plesk_host:
+        args.dest_plesk_host = args.destination
     if args.source_plesk_pass is 'prompt':
         args.source_plesk_pass = getpass.getpass(prompt="Please enter the password for {0}'s {1} account: ".format(args.source_plesk_host, args.source_plesk_user))
     if args.dest_plesk_pass is 'prompt':
@@ -490,9 +532,16 @@ if not args.no_plesk:
 
     # Now that that's taken care of
 
-    source_plesk = PleskApiClient(args.source_plesk_host)
+    # If the source system is in trustwave, make the outgoing port 8333 because their firewalls are silly.  Assumes
+    #   iptables on the receiving end is redirecting 8333 to 8443, which should be set up on aws-web[1-3].
+    if args.source_plesk_host in ['web3.firstscribe.com', 'web4.firstscribe.com']:
+        port = 8333
+    else:
+        port = 8443
+
+    source_plesk = PleskApiClient(args.source_plesk_host, verbose=args.verbose)
     source_plesk.set_credentials(args.source_plesk_user, args.source_plesk_pass)
-    destination_plesk = PleskApiClient(args.dest_plesk_host)
+    destination_plesk = PleskApiClient(args.dest_plesk_host, port=port, verbose=args.verbose)
     destination_plesk.set_credentials(args.dest_plesk_user, args.dest_plesk_pass)
 
     print('Creating customer... ', end='')
