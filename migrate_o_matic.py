@@ -117,7 +117,7 @@ def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipe
                              "(or 'y' or 'n').\n")
 
 if not args.no_db:
-    if any(args.source_db_name, args.source_db_pass, args.source_db_host):
+    if any((args.source_db_name, args.source_db_pass, args.source_db_host)):
         # They tried to define database parameters.  Let's see if they got it right
         if not all((args.source_db_name, args.source_db_pass, args.source_db_host)):
             print('If specifying database parameters, I need at a minimum -sdn, -sdp, and -sdh.')
