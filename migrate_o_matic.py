@@ -117,35 +117,36 @@ def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipe
                              "(or 'y' or 'n').\n")
 
 if not args.no_db:
+
+    possible_db_refs = []
+    wp_roots = []
+    magento_roots = []
+
+    # Let's try to find a database references...
+
+    db_ref_regexr = re.compile(DATABASE_REFS)
+
+    if args.verbose:
+        print('Looking for magento/wordpress installs...')
+
+    for root, dirs, files in os.walk(site_httpdocs):
+        if 'app' in dirs:
+            magento_roots.append(root)
+        if 'wp-config.php' in files:
+            wp_roots.append(root)
+
+        # Although inefficient, build full paths so we can search for patterns with paths
+        for name in files:
+            full_path = os.path.join(root, name)
+            if db_ref_regexr.search(full_path):
+                possible_db_refs.append(full_path)
+
     if any((args.source_db_name, args.source_db_pass, args.source_db_host)):
         # They tried to define database parameters.  Let's see if they got it right
         if not all((args.source_db_name, args.source_db_pass, args.source_db_host)):
             print('If specifying database parameters, I need at a minimum -sdn, -sdp, and -sdh.')
             exit(2)
     else:  # Try to autodetect
-
-        # Let's try to find a wordpress install
-
-        db_ref_regexr = re.compile(DATABASE_REFS)
-
-        wp_roots = []
-        magento_roots = []
-        possible_db_refs = []
-
-        if args.verbose:
-            print('Looking for magento/wordpress installs...')
-
-        for root, dirs, files in os.walk(site_httpdocs):
-            if 'app' in dirs:
-                magento_roots.append(root)
-            if 'wp-config.php' in files:
-                wp_roots.append(root)
-
-            # Although inefficient, build full paths so we can search for patterns with paths
-            for name in files:
-                full_path = os.path.join(root, name)
-                if db_ref_regexr.search(full_path):
-                    possible_db_refs.append(full_path)
 
         if (len(possible_db_refs) > 1):
             print('I see possible database references in:')
