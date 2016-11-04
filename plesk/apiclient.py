@@ -1,5 +1,6 @@
 import http.client
 import random
+import re
 import string
 import xml.etree.ElementTree as ET
 
