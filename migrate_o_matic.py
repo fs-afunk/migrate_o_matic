@@ -117,48 +117,55 @@ def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipe
                              "(or 'y' or 'n').\n")
 
 if not args.no_db:
-    # Let's try to find a wordpress install
+    if any(args.source_db_name, args.source_db_pass, args.source_db_host):
+        # They tried to define database parameters.  Let's see if they got it right
+        if not all((args.source_db_name, args.source_db_pass, args.source_db_host)):
+            print('If specifying database parameters, I need at a minimum -sdn, -sdp, and -sdh.')
+            exit(2)
+    else:  # Try to autodetect
 
-    db_ref_regexr = re.compile(DATABASE_REFS)
+        # Let's try to find a wordpress install
 
-    wp_roots = []
-    magento_roots = []
-    possible_db_refs = []
+        db_ref_regexr = re.compile(DATABASE_REFS)
 
-    if args.verbose:
-        print('Looking for magento/wordpress installs...')
+        wp_roots = []
+        magento_roots = []
+        possible_db_refs = []
 
-    for root, dirs, files in os.walk(site_httpdocs):
-        if 'app' in dirs:
-            magento_roots.append(root)
-        if 'wp-config.php' in files:
-            wp_roots.append(root)
+        if args.verbose:
+            print('Looking for magento/wordpress installs...')
 
-        # Although inefficient, build full paths so we can search for patterns with paths
-        for name in files:
-            full_path = os.path.join(root, name)
-            if db_ref_regexr.search(full_path):
-                possible_db_refs.append(full_path)
+        for root, dirs, files in os.walk(site_httpdocs):
+            if 'app' in dirs:
+                magento_roots.append(root)
+            if 'wp-config.php' in files:
+                wp_roots.append(root)
 
-    if (len(possible_db_refs) > 1) and not all((args.source_db_name, args.source_db_pass, args.source_db_host)):
-        print('I see possible database references in:')
-        for item in possible_db_refs:
-            print(item)
-        print('This setup is too rich for my blood.  Try again manually specifying -sdn, -sdp, and -sdh.')
-        exit(2)
+            # Although inefficient, build full paths so we can search for patterns with paths
+            for name in files:
+                full_path = os.path.join(root, name)
+                if db_ref_regexr.search(full_path):
+                    possible_db_refs.append(full_path)
 
-    if (len(possible_db_refs) == 1) and (len(wp_roots) == 1) and not any(args.source_db_name, args.source_db_pass, args.source_db_host):
-        # Sweet!  Single wordpress install.  I can handle this.
-        wp_install = cms.wordpress.instance(wp_roots[0])
+        if (len(possible_db_refs) > 1):
+            print('I see possible database references in:')
+            for item in possible_db_refs:
+                print(item)
+            print('This setup is too rich for my blood.  Try again manually specifying -sdn, -sdp, and -sdh.')
+            exit(2)
 
-        args.source_db_host = wp_install.host
-        args.source_db_name = wp_install.name
-        args.source_db_pass = wp_install.password
-        args.source_db_user = wp_install.user
+        if (len(possible_db_refs) == 1) and (len(wp_roots) == 1):
+            # Sweet!  Single wordpress install.  I can handle this.
+            wp_install = cms.wordpress.instance(wp_roots[0])
 
-    if len(possible_db_refs) == 0:
-        print('I did not see any possible database references.  Assuming --no-db, but you should probably check.')
-        args.no_db = True
+            args.source_db_host = wp_install.host
+            args.source_db_name = wp_install.name
+            args.source_db_pass = wp_install.password
+            args.source_db_user = wp_install.user
+
+        if len(possible_db_refs) == 0:
+            print('I did not see any possible database references.  Assuming --no-db, but you should probably check.')
+            args.no_db = True
 
     # Populate the rest of the arguments
 
