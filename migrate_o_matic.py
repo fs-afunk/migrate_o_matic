@@ -1,5 +1,6 @@
 import argparse
 import getpass
+import json
 import os
 import re
 import shlex
@@ -8,6 +9,7 @@ import subprocess
 import sys
 
 import pexpect
+import pymysql
 
 import cms.wordpress
 import plesk.apiclient
@@ -116,6 +118,14 @@ def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipe
             sys.stdout.write("Please respond with 'yes' or 'no' "
                              "(or 'y' or 'n').\n")
 
+
+def lookup_password(hostname):
+
+
+
+
+
+
 if not args.no_db:
 
     possible_db_refs = []
@@ -192,15 +202,43 @@ if not args.no_plesk:
     if not args.dest_plesk_host:
         args.dest_plesk_host = args.destination
     if args.source_plesk_pass is 'prompt':
-        args.source_plesk_pass = getpass.getpass(prompt="Please enter the password for {0}'s {1} account: ".format(args.source_plesk_host, args.source_plesk_user))
+        args.source_plesk_pass = getpass.getpass(
+            prompt="Please enter the password for {0}'s {1} account: ".format(args.source_plesk_host,
+                                                                              args.source_plesk_user))
     if args.dest_plesk_pass is 'prompt':
-        args.dest_plesk_pass = getpass.getpass(prompt="Please enter the password for {0}'s {1} account: ".format(args.dest_plesk_host, args.dest_plesk_user))
-    if not all((args.source_plesk_host, args.source_plesk_user, args.source_plesk_pass, args.dest_plesk_host,
-                args.dest_plesk_user, args.dest_plesk_pass, args.dest_plesk_ip)) and any((args.new_customer, args.existing_customer)):
-        print('If I am to modify plesk, I will need the host, user, and password for both instances as well as a customer name')
-        exit(1)
+        args.dest_plesk_pass = getpass.getpass(
+            prompt="Please enter the password for {0}'s {1} account: ".format(args.dest_plesk_host,
+                                                                              args.dest_plesk_user))
 
-    # Now that that's taken care of
+    # We try to pull the configuration from the database
+    # First, we get the connection information.
+
+    with open('config.json') as json_config_file:
+        config = json.load(json_config_file)
+
+    connection = pymysql.connect(host=config['production']['database']['params']['host'],
+                                 user=config['production']['database']['params']['username'],
+                                 db=config['production']['database']['params']['dbname'],
+                                 password=config['production']['database']['params']['password'])
+
+    try:
+        with connection.cursor() as cursor:
+            sql = "select password from plesks where hostname = %s"
+            result_num = cursor.execute(sql, (args.source_plesk_host))
+            if result_num != 1:
+                print('Could not find that host in the database.')
+                exit(1)
+            result = cursor.fetchone()
+            # TODO Finish this
+    finally:
+        connection.close()
+
+    if not all((args.source_plesk_host, args.source_plesk_user, args.source_plesk_pass, args.dest_plesk_host,
+                args.dest_plesk_user, args.dest_plesk_pass, args.dest_plesk_ip)) and any(
+        (args.new_customer, args.existing_customer)):
+        print(
+            'If I am to modify plesk, I will need the host, user, and password for both instances as well as a customer name')
+        exit(1)
 
     # If the source system is in trustwave, make the outgoing port 8333 because their firewalls are silly.  Assumes
     #   iptables on the receiving end is redirecting 8333 to 8443, which should be set up on aws-web[1-3].
