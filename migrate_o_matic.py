@@ -222,9 +222,12 @@ if not args.no_plesk:
                                                                               args.dest_plesk_user))
         destination_plesk.set_credentials(args.dest_plesk_user, args.dest_plesk_pass)
 
-    if not all((args.source_plesk_host, args.source_plesk_user, args.source_plesk_pass, args.dest_plesk_host,
-                args.dest_plesk_user, args.dest_plesk_pass, args.dest_plesk_ip)) and any(
-        (args.new_customer, args.existing_customer)):
+    if args.dest_plesk_ip:
+        destination_plesk.internal_ip = args.dest_plesk_ip
+
+    if not (all((source_plesk.host, source_plesk.login, source_plesk.password, destination_plesk.host,
+                 destination_plesk.login, destination_plesk.password, destination_plesk.internal_ip)) or not any(
+            (args.new_customer, args.existing_customer))):
         print(
             'If I am to modify plesk, I will need the host, user, and password for both instances as well as a customer name')
         exit(1)
