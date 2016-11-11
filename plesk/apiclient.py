@@ -230,8 +230,8 @@ class Client:
             return False
         else:
             returnee = []
-            returnee[0] = res_et.find('.//id').text
-            returnee[1] = res_et.find('.//pname').text
+            returnee.append(res_et.find('.//id').text)
+            returnee.append(res_et.find('.//pname').text)
             return returnee
 
     def get_site_id(self, name):
