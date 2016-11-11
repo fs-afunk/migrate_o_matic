@@ -158,7 +158,7 @@ if not args.no_db:
 
         if (len(possible_db_refs) == 1) and (len(wp_roots) == 1):
             # Sweet!  Single wordpress install.  I can handle this.
-            wp_install = cms.wordpress.instance(wp_roots[0])
+            wp_install = cms.wordpress.Instance(wp_roots[0])
 
             args.source_db_host = wp_install.host
             args.source_db_name = wp_install.name
