@@ -197,11 +197,11 @@ if not args.no_plesk:
 
     # If the source system is in trustwave, make the outgoing port 8333 because their firewalls are silly.  Assumes
     #   iptables on the receiving end is redirecting 8333 to 8443, which should be set up on aws-web[1-3].
-    if args.source_plesk_host in ['web3.firstscribe.com', 'web4.firstscribe.com']:
-        dest_port = 8333
-    else:
-        dest_port = 8443
-
+    # if args.source_plesk_host in ['web3.firstscribe.com', 'web4.firstscribe.com']:
+    #     dest_port = 8333
+    # else:
+    #     dest_port = 8443
+    dest_port = 8443
     source_plesk = plesk.apiclient.Client(args.source_plesk_host, verbose=args.verbose)
     destination_plesk = plesk.apiclient.Client(args.dest_plesk_host, port=dest_port, verbose=args.verbose)
 
@@ -236,7 +236,7 @@ if not args.no_plesk:
 
     print('Creating customer... ', end='')
     if args.existing_customer:
-        customer_id = destination_plesk.get_customer_id(args.existing_customer)
+        customer_id = destination_plesk.get_customer_id(args.existing_customer)[0]
     else:
         customer_id = destination_plesk.add_customer(args.new_customer)
     if customer_id:
