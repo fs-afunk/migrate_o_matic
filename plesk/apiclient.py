@@ -1,8 +1,14 @@
+import base64
 import http.client
+import json
 import random
 import re
 import string
 import xml.etree.ElementTree as ET
+
+import Crypto
+import Crypto.Cipher.AES
+import pymysql
 
 
 class Client:
@@ -17,6 +23,7 @@ class Client:
         self.verbose = verbose
         self.login = None
         self.password = None
+        self.internal_ip = None
 
     def set_credentials(self, login, password):
         self.login = login
@@ -24,6 +31,75 @@ class Client:
 
     def set_secret_key(self, secret_key):
         self.secret_key = secret_key
+
+    def lookup_plesk_info(self):
+        """
+        This function uses the SQL database made my Alex's PHP inventory app for retrieving plesk info
+
+        Depends on connectivity to the database, and the presence of the config.json file used for PHP's site inventory
+        :return: Boolean with success
+        """
+        # We try to pull the configuration from the database
+
+        # Open JSON config
+        with open('config.json') as json_config_file:
+            config = json.load(json_config_file)
+
+        connection = pymysql.connect(host=config['production']['database']['params']['host'],
+                                     user=config['production']['database']['params']['username'],
+                                     db=config['production']['database']['params']['dbname'],
+                                     password=config['production']['database']['params']['password'])
+
+        # Connect to the database, and pull the row corresponding to the host
+        if self.verbose:
+            print((config['production']['database']['params']['host'],
+                   config['production']['database']['params']['username'],
+                   config['production']['database']['params']['dbname'],
+                   config['production']['database']['params']['password']))
+        try:
+            with connection.cursor() as cursor:
+                sql = "select hostname, username, password, internal_ip from plesks where hostname = %s"
+                result_num = cursor.execute(sql, self.host)
+                if result_num != 1:
+                    print('Could not find that host in the database.')
+                    return False
+                result_tuple = cursor.fetchone()
+        finally:
+            connection.close()
+
+        result = {}
+        for k, v in zip(('hostname', 'username', 'password', 'internal_ip'), result_tuple):
+            result[k] = v
+
+        if self.verbose:
+            print(result)
+
+        # Got me a shiny result, but the password is still encrypted
+
+        ciphertext_dec = base64.b64decode(result['password'])
+
+        # The initialization vector should be the first 16 bytes of the encrypted data, that's how PHP stores it
+        iv = ciphertext_dec[0:16]
+
+        # I use CFB in both PHP and python.  It's not dependent on the phrase being a multiple of 16 bytes
+        decrypto = Crypto.Cipher.AES.new(config['production']['enc_key'], Crypto.Cipher.AES.MODE_CFB, iv)
+
+        # The rest of the string is the encrypted data
+        ciphertext = ciphertext_dec[16:]
+        real_password = decrypto.decrypt(ciphertext).decode('utf-8')
+
+        result['password'] = real_password
+
+        if self.verbose:
+            print(result)
+
+        if all((result['username'], result['password'], result['internal_ip'])):
+            self.login = result['username']
+            self.password = result['password']
+            self.internal_ip = result['internal_ip']
+            return True
+        else:
+            return False
 
     def __query(self, request):
         headers = {"Content-type": "text/xml", "HTTP_PRETTY_PRINT": "TRUE"}

@@ -1,7 +1,5 @@
 import argparse
-import base64
 import getpass
-import json
 import os
 import re
 import shlex
@@ -9,10 +7,7 @@ import socket
 import subprocess
 import sys
 
-import Crypto
-import Crypto.Cipher.AES
 import pexpect
-import pymysql
 
 import cms.wordpress
 import plesk.apiclient
@@ -122,48 +117,6 @@ def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipe
                              "(or 'y' or 'n').\n")
 
 
-def lookup_plesk(hostname):
-    # We try to pull the configuration from the database
-    # First, we get the connection information.
-
-    with open('config.json') as json_config_file:
-        config = json.load(json_config_file)
-
-    connection = pymysql.connect(host=config['production']['database']['params']['host'],
-                                 user=config['production']['database']['params']['username'],
-                                 db=config['production']['database']['params']['dbname'],
-                                 password=config['production']['database']['params']['password'])
-
-    try:
-        with connection.cursor() as cursor:
-            sql = "select hostname, username, password, internal_ip from plesks where hostname = %s"
-            result_num = cursor.execute(sql, (args.source_plesk_host))
-            if result_num != 1:
-                print('Could not find that host in the database.')
-                exit(1)
-            result = cursor.fetchone()
-    finally:
-        connection.close()
-
-    # Got me a shiny result, but the password is still encrypted
-
-    ciphertext_dec = base64.decode(result['password'])
-
-    # The initialization vector should be the first 16 bytes of the encrypted data, that's how PHP stores it
-    iv = ciphertext_dec[0:16]
-
-    # I use CFB in both PHP and python.  It's not dependent on the phrase being a multiple of 16 bytes
-    decrypto = Crypto.Cipher.AES.new(config['production']['enc_key'], Crypto.Cipher.AES.MODE_CFB, iv)
-
-    # The rest of the string is the encrypted data
-    ciphertext = ciphertext_dec[16:]
-    real_password = decrypto.decrypt(ciphertext)
-
-    result['password'] = real_password
-
-    return result
-
-
 if not args.no_db:
 
     possible_db_refs = []
@@ -239,16 +192,35 @@ if args.dest_sftp_pass is 'prompt':
 if not args.no_plesk:
     if not args.dest_plesk_host:
         args.dest_plesk_host = args.destination
+
+    # Create the objects first
+
+    # If the source system is in trustwave, make the outgoing port 8333 because their firewalls are silly.  Assumes
+    #   iptables on the receiving end is redirecting 8333 to 8443, which should be set up on aws-web[1-3].
+    if args.source_plesk_host in ['web3.firstscribe.com', 'web4.firstscribe.com']:
+        dest_port = 8333
+    else:
+        dest_port = 8443
+
+    source_plesk = plesk.apiclient.Client(args.source_plesk_host, verbose=args.verbose)
+    destination_plesk = plesk.apiclient.Client(args.dest_plesk_host, port=dest_port, verbose=args.verbose)
+
+    # Let's autofill as much information as we can.
+
+    source_plesk.lookup_plesk_info()
+    destination_plesk.lookup_plesk_info()
+
     if args.source_plesk_pass is 'prompt':
         args.source_plesk_pass = getpass.getpass(
             prompt="Please enter the password for {0}'s {1} account: ".format(args.source_plesk_host,
                                                                               args.source_plesk_user))
+        source_plesk.set_credentials(args.source_plesk_user, args.source_plesk_pass)
+
     if args.dest_plesk_pass is 'prompt':
         args.dest_plesk_pass = getpass.getpass(
             prompt="Please enter the password for {0}'s {1} account: ".format(args.dest_plesk_host,
                                                                               args.dest_plesk_user))
-
-    # TODO use my new function to extract plesk info
+        destination_plesk.set_credentials(args.dest_plesk_user, args.dest_plesk_pass)
 
     if not all((args.source_plesk_host, args.source_plesk_user, args.source_plesk_pass, args.dest_plesk_host,
                 args.dest_plesk_user, args.dest_plesk_pass, args.dest_plesk_ip)) and any(
@@ -257,17 +229,7 @@ if not args.no_plesk:
             'If I am to modify plesk, I will need the host, user, and password for both instances as well as a customer name')
         exit(1)
 
-    # If the source system is in trustwave, make the outgoing port 8333 because their firewalls are silly.  Assumes
-    #   iptables on the receiving end is redirecting 8333 to 8443, which should be set up on aws-web[1-3].
-    if args.source_plesk_host in ['web3.firstscribe.com', 'web4.firstscribe.com']:
-        port = 8333
-    else:
-        port = 8443
 
-    source_plesk = plesk.apiclient.Client(args.source_plesk_host, verbose=args.verbose)
-    source_plesk.set_credentials(args.source_plesk_user, args.source_plesk_pass)
-    destination_plesk = plesk.apiclient.Client(args.dest_plesk_host, port=port, verbose=args.verbose)
-    destination_plesk.set_credentials(args.dest_plesk_user, args.dest_plesk_pass)
 
     print('Creating customer... ', end='')
     if args.existing_customer:
