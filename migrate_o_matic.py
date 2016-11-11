@@ -236,7 +236,7 @@ if not args.no_plesk:
 
     print('Creating customer... ', end='')
     if args.existing_customer:
-        customer_id = destination_plesk(args.existing_customer)
+        customer_id = destination_plesk.get_customer_id(args.existing_customer)
     else:
         customer_id = destination_plesk.add_customer(args.new_customer)
     if customer_id:
