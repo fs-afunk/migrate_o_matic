@@ -1,4 +1,5 @@
 import argparse
+import base64
 import getpass
 import json
 import os
@@ -8,6 +9,8 @@ import socket
 import subprocess
 import sys
 
+import Crypto
+import Crypto.Cipher.AES
 import pexpect
 import pymysql
 
@@ -119,11 +122,46 @@ def query_yes_no(question, default="yes"):  # http://code.activestate.com/recipe
                              "(or 'y' or 'n').\n")
 
 
-def lookup_password(hostname):
+def lookup_plesk(hostname):
+    # We try to pull the configuration from the database
+    # First, we get the connection information.
 
+    with open('config.json') as json_config_file:
+        config = json.load(json_config_file)
 
+    connection = pymysql.connect(host=config['production']['database']['params']['host'],
+                                 user=config['production']['database']['params']['username'],
+                                 db=config['production']['database']['params']['dbname'],
+                                 password=config['production']['database']['params']['password'])
 
+    try:
+        with connection.cursor() as cursor:
+            sql = "select hostname, username, password, internal_ip from plesks where hostname = %s"
+            result_num = cursor.execute(sql, (args.source_plesk_host))
+            if result_num != 1:
+                print('Could not find that host in the database.')
+                exit(1)
+            result = cursor.fetchone()
+    finally:
+        connection.close()
 
+    # Got me a shiny result, but the password is still encrypted
+
+    ciphertext_dec = base64.decode(result['password'])
+
+    # The initialization vector should be the first 16 bytes of the encrypted data, that's how PHP stores it
+    iv = ciphertext_dec[0:16]
+
+    # I use CFB in both PHP and python.  It's not dependent on the phrase being a multiple of 16 bytes
+    decrypto = Crypto.Cipher.AES.new(config['production']['enc_key'], Crypto.Cipher.AES.MODE_CFB, iv)
+
+    # The rest of the string is the encrypted data
+    ciphertext = ciphertext_dec[16:]
+    real_password = decrypto.decrypt(ciphertext)
+
+    result['password'] = real_password
+
+    return result
 
 
 if not args.no_db:
@@ -210,28 +248,7 @@ if not args.no_plesk:
             prompt="Please enter the password for {0}'s {1} account: ".format(args.dest_plesk_host,
                                                                               args.dest_plesk_user))
 
-    # We try to pull the configuration from the database
-    # First, we get the connection information.
-
-    with open('config.json') as json_config_file:
-        config = json.load(json_config_file)
-
-    connection = pymysql.connect(host=config['production']['database']['params']['host'],
-                                 user=config['production']['database']['params']['username'],
-                                 db=config['production']['database']['params']['dbname'],
-                                 password=config['production']['database']['params']['password'])
-
-    try:
-        with connection.cursor() as cursor:
-            sql = "select password from plesks where hostname = %s"
-            result_num = cursor.execute(sql, (args.source_plesk_host))
-            if result_num != 1:
-                print('Could not find that host in the database.')
-                exit(1)
-            result = cursor.fetchone()
-            # TODO Finish this
-    finally:
-        connection.close()
+    # TODO use my new function to extract plesk info
 
     if not all((args.source_plesk_host, args.source_plesk_user, args.source_plesk_pass, args.dest_plesk_host,
                 args.dest_plesk_user, args.dest_plesk_pass, args.dest_plesk_ip)) and any(
