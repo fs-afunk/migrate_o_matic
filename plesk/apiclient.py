@@ -124,14 +124,14 @@ class Client:
         data = response.read()
         return data.decode("utf-8")
 
-    def get_info(self, req_type, req_info, req_filter=None):
+    def __get_info(self, req_type, req_info, req_filter=None):
         """
         Takes the reqType, reqInfo, and reqFilter, and builds an XML request (because who likes to make XML?)
         Passes said XML to __query to get the XML result, then makes it usable.
 
         :param req_type: The type of request, can be customer, webspace (subscription), or site (domain)
         :param req_info: The type of information we're looking for.  Probably gen_info or hosting
-        :param req_filter: A filter to specify what object we're looking for
+        :param req_filter: A list of lists, with the first item being the key, and the second, value
         :return: An XML element object rooted at the response section.  Returns False if entity not found
         """
 
@@ -140,7 +140,7 @@ class Client:
         get_elm = ET.SubElement(req_type_elm, 'get')
         req_filter_elm = ET.SubElement(get_elm, 'filter')
         if req_filter:
-            for entity_filter in req_filter.items():
+            for entity_filter in req_filter:
                 req_filter_key_elm = ET.SubElement(req_filter_elm, entity_filter[0])
                 req_filter_key_elm.text = entity_filter[1]
         dataset_elm = ET.SubElement(get_elm, 'dataset')
@@ -159,7 +159,22 @@ class Client:
         if res_et.find('.//status').text == 'error':
             return False
         else:
-            return res_et.find('.//id').text
+            return res_et.find('.//data')
+
+    def get_hosting_info(self, site_name):
+        response = self.__get_info('site', 'hosting', [['name', site_name]])
+
+        property_dict = {}
+
+        if response:
+            properties = response.find('./hosting/vrt_hst').findall('property')
+            for property in properties:
+                property_dict[property.find('name').text] = property.find('value').text
+
+            return property_dict
+        else:
+            return False
+
 
     def get_protected_dirs(self, site_id):
         """
@@ -197,6 +212,42 @@ class Client:
                     protected_dirs.append(res_name)
 
             return protected_dirs
+
+    def get_ssl_certs(self, site_name):
+        """
+        Takes the site name and builds an XML request (because who likes to make XML?)
+        Passes said XML to __query to get the XML result, then makes it usable.
+
+        :param site_name: A filter to specify what object we're looking for
+        :return: A list of names of SSL certs.  Returns False if entity not found
+        """
+
+        packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
+        req_type_elm = ET.SubElement(packet_elm, 'certificates')
+        get_elm = ET.SubElement(req_type_elm, 'get-pool')
+        req_filter_elm = ET.SubElement(get_elm, 'filter')
+        req_filter_key_elm = ET.SubElement(req_filter_elm, 'domain-name')
+        req_filter_key_elm.text = site_name
+
+        if self.verbose:
+            print(ET.tostring(packet_elm, 'utf-8'))
+
+        response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+
+        if self.verbose:
+            print(response)
+
+        res_et = ET.fromstring(response)
+
+        if res_et.find('.//status').text == 'error':
+            return False
+        else:
+            ssl_certs = []
+            for result_elm in res_et.findall('.//certificate'):
+                res_name = result_elm.find('.//name').text
+                ssl_certs.append(res_name)
+
+            return ssl_certs
 
     def get_customer_id(self, login_id):
         """

@@ -250,7 +250,7 @@ if not args.no_plesk:
     webspace_result = destination_plesk.add_webspace({'name': args.site, 'owner-id': customer_id}, 'vrt_hst',
                                                      {'ftp_login': args.dest_sftp_user,
                                                       'ftp_password': args.dest_sftp_pass, 'shell': '/bin/bash'},
-                                                     args.dest_plesk_ip, 'Default Domain')
+                                                     destination_plesk.internal_ip, 'Default Domain')
 
     if webspace_result[0] == 'ok':
         print('OK')
@@ -263,11 +263,16 @@ if not args.no_plesk:
 
     source_site_id = source_plesk.get_site_id(args.site)
 
+    # Copy SSL certs if any
+    ssl_certs = source_plesk.get_ssl_certs(args.site)
+
+    if ssl_certs and len(ssl_certs) > 1:
+        step_placeholder('copy the SSL certificates')
+    else:
+        destination_plesk.set_webspace({'ssl': 'false'}, webspace_result[1])
 else:
     step_placeholder('make the new customer in plesk - use bash as shell')
-
-# Copy SSL certs if any
-step_placeholder('copy the SSL certificates')
+    step_placeholder('copy the SSL certificates')
 
 # Copy any special hosting settings/php settings
 step_placeholder('verify the PHP and hosting settings')
