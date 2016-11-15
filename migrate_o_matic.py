@@ -7,6 +7,7 @@ import socket
 import subprocess
 import sys
 
+import dnspython
 import pexpect
 
 import cms.wordpress
@@ -266,13 +267,72 @@ if not args.no_plesk:
     # Copy SSL certs if any
     ssl_certs = source_plesk.get_ssl_certs(args.site)
 
-    if ssl_certs and len(ssl_certs) > 1:
-        step_placeholder('copy the SSL certificates')
+    if __name__ == '__main__':
+        if ssl_certs and len(ssl_certs) > 1:
+            step_placeholder('copy the SSL certificates')
+        else:
+            destination_plesk.set_webspace({'ssl': 'false'}, webspace_result[1])
+
+    # Let's see if we host DNS
+
+    answers = dnspython.resolver.query(args.site, 'NS')
+    our_dns = False
+    for rdata in answers:
+        if 'firstscribe.com' in str(rdata.target).lower():
+            our_dns = True
+
+    if our_dns:
+        destination_plesk.set_dns(customer_id, 'enable')
+
+        # Plesk, to my knowledge, doesn't provide the ability to get non-default DNS records.  So, I compare them...
+        records = source_plesk.get_dns_records(source_site_id)
+        template = source_plesk.get_dns_template()
+
+        # Make the "template" apply for the current site
+        for d in template:
+            d['host'] = d['host'].replace('<domain>', args.site).replace('<ip>', source_plesk.internal_ip)
+            d['value'] = d['value'].replace('<domain>', args.site).replace('<ip>', source_plesk.internal_ip)
+            d['site-id'] = source_site_id
+
+        # Find the non-default DNS entries
+        diffs = [x for x in records if x not in template]
+
+        # Now, if there are any, let's do stuff
+        if len(diffs) > 0:
+            print('I see non-default DNS records:')
+            for record in diffs:
+                print(record)
+
+            dns_import = query_yes_no('Do you want me to try to import them?', default="no")
+
+            if dns_import:
+                # I need the new DNS zone, so I know which records to remove
+                new_zone = destination_plesk.get_dns_records(dest_site_id, get_id=True)
+
+                # If there are any MX records, rip out all the new ones
+                if (item for item in diffs if item['type'] == 'MX'):
+                    for record in new_zone:
+                        if record['type'] == 'MX':
+                            destination_plesk.del_dns_record(record['id'])
+
+                # If there is an SPF record, rip out the new one
+                if (item for item in diffs if 'spf' in item['value'] and item['type'] == 'TXT'):
+                    for record in new_zone:
+                        if 'spf' in record['value']:
+                            destination_plesk.del_dns_record(record['id'])
+
+                #TODO mangle the diffs list, and import it
+
     else:
-        destination_plesk.set_webspace({'ssl': 'false'}, webspace_result[1])
+        print('We do not host DNS.  Disabling DNS on the destination site')
+        destination_plesk.set_dns(customer_id, 'disable')
+
+
 else:
     step_placeholder('make the new customer in plesk - use bash as shell')
     step_placeholder('copy the SSL certificates')
+    step_placeholder('update new DNS if on plesk')
+
 
 # Copy any special hosting settings/php settings
 step_placeholder('verify the PHP and hosting settings')
@@ -399,9 +459,6 @@ except KeyboardInterrupt:
 if exitcode != 0:
     print('Site copy failed.  Abort!')
     exit(1)
-
-# If we host DNS, copy records
-step_placeholder('update new DNS if on plesk')
 
 # Test the site in the new location
 step_placeholder('test the site in the new location')

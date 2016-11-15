@@ -175,7 +175,6 @@ class Client:
         else:
             return False
 
-
     def get_protected_dirs(self, site_id):
         """
         Takes the reqType, reqInfo, and reqFilter, and builds an XML request (because who likes to make XML?)
@@ -212,6 +211,88 @@ class Client:
                     protected_dirs.append(res_name)
 
             return protected_dirs
+
+    def get_dns_records(self, site_id, get_id=False):
+        """
+        Looks up all DNS records pertaining to the site specified in site_id.  Note, there is no filtering of whether or
+        not the records are included by the DNS template.
+
+        :param site_id: A filter to specify what object we're looking for
+        :param get_id: If true, also add the record ID to each dict
+        :return: A list of dicts, where each dict has a 'type', 'host', 'value', and optionally an 'opt'.
+        """
+
+        packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
+        req_type_elm = ET.SubElement(packet_elm, 'dns')
+        get_elm = ET.SubElement(req_type_elm, 'get_rec')
+        req_filter_elm = ET.SubElement(get_elm, 'filter')
+        req_filter_key_elm = ET.SubElement(req_filter_elm, 'site-id')
+        req_filter_key_elm.text = site_id
+
+        if self.verbose:
+            print(ET.tostring(packet_elm, 'utf-8'))
+
+        response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+
+        if self.verbose:
+            print(response)
+
+        res_et = ET.fromstring(response)
+
+        if res_et.find('.//status').text == 'error':
+            return False
+        else:
+            dns_records = []
+            for result_elm in res_et.findall('.//result'):
+                dns_record = {}
+                if get_id:
+                    # Let's capture the record ID
+                    dns_record['id'] = result_elm.find('id').text
+
+                # The "data" element is a member of result
+                data_elm = result_elm.find('data')
+                for datalet in data_elm:
+                    dns_record[datalet.tag] = datalet.text
+                dns_records.append(dns_record)
+
+            return dns_records
+
+    def get_dns_template(self):
+        """
+        Gets the DNS template for this domain
+
+        :return: A set of dicts, where each dict has a 'type', 'host', 'value', and optionally an 'opt'.
+        """
+
+        packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
+        req_type_elm = ET.SubElement(packet_elm, 'dns')
+        get_elm = ET.SubElement(req_type_elm, 'get_rec')
+        ET.SubElement(get_elm, 'filter')
+        ET.SubElement(get_elm, 'template')
+
+        if self.verbose:
+            print(ET.tostring(packet_elm, 'utf-8'))
+
+        response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+
+        if self.verbose:
+            print(response)
+
+        res_et = ET.fromstring(response)
+
+        if res_et.find('.//status').text == 'error':
+            return False
+        else:
+            dns_records = []
+            for result_elm in res_et.findall('.//result'):
+                # The "data" element is a member of result
+                data_elm = result_elm.find('data')
+                dns_record = {}
+                for datalet in data_elm:
+                    dns_record[datalet.tag] = datalet.text
+                dns_records.append(dns_record)
+
+            return dns_records
 
     def get_ssl_certs(self, site_name):
         """
@@ -318,7 +399,7 @@ class Client:
         else:
             return res_et.find('.//id').text
 
-    def set_info(self, set_entity, set_type, set_info, set_filter=None):
+    def __set_info(self, set_entity, set_type, set_info, set_filter=None):
         """
         Submits a query to the Plesk API to set some information, such as create customer
         :param set_entity: What type of entity we're modifying - webspace, customer, etc.
@@ -350,6 +431,36 @@ class Client:
 
         res_elm = ET.fromstring(response)
         res_info_elm = res_elm.find('result')
+
+        if res_info_elm.text == 'ok':
+            return True
+        else:
+            return False
+
+    def set_dns(self, site, status):
+        """
+        Submits a query to the Plesk API to set some information, such as create customer
+        :param site: Site ID of the site to modify
+        :param status: Desired status, either 'enable' or 'disable'
+        :return: Boolean with success
+        """
+        packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
+        set_entity_elm = ET.SubElement(packet_elm, 'dns')
+        set_elm = ET.SubElement(set_entity_elm, status)
+        set_filter_elm = ET.SubElement(set_elm, 'filter')
+        req_filter = ET.SubElement(set_filter_elm, 'site-id')
+        req_filter.text = site
+
+        if self.verbose:
+            print(ET.tostring(packet_elm, 'utf-8'))
+
+        response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+
+        if self.verbose:
+            print(response)
+
+        res_elm = ET.fromstring(response)
+        res_info_elm = res_elm.find('.//status')
 
         if res_info_elm.text == 'ok':
             return True
@@ -484,5 +595,73 @@ class Client:
 
         if res_elm.find('.//status').text == 'ok':
             return res_elm.find('.//id').text
+        else:
+            return False
+
+    def add_dns_records(self, site_id, records):
+        """
+        Takes the reqType, reqInfo, and reqFilter, and builds an XML request (because who likes to make XML?)
+        Passes said XML to __query to get the XML result, then makes it usable.
+
+        :param site_id: Which site to add records to.
+        :param records: A list of dicts, where the dicts contain a 'type', 'host', 'value', and optionally an 'opt'.  See
+            get_dns_records().
+        :return: A boolean with success
+        """
+
+        packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
+        req_type_elm = ET.SubElement(packet_elm, 'dns')
+        for record in records:
+            get_elm = ET.SubElement(req_type_elm, 'add_rec')
+            # I don't care what the dict says about the source site-id, I'm going to set my own
+            ET.SubElement(get_elm, 'site-id').text = str(site_id)
+            # Normally, I'd loop through the dict.  But Plesk expects them in a precise order...
+            ET.SubElement(get_elm, 'type').text = record['type']
+            ET.SubElement(get_elm, 'host').text = record['host'].rstrip('.')
+            ET.SubElement(get_elm, 'value').text = record['value'].rstrip('.')
+            if record['opt']:
+                ET.SubElement(get_elm, 'opt').text = record['opt']
+
+        if self.verbose:
+            print(ET.tostring(packet_elm, 'utf-8'))
+
+        response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+
+        if self.verbose:
+            print(response)
+
+        res_et = ET.fromstring(response)
+
+        if res_et.find('.//status').text == 'ok':
+            return True
+        else:
+           return False
+
+    def del_dns_record(self, record_id):
+        """
+        Submits a query to the Plesk API to set some information, such as create customer
+        :param record_id: Id of record to be deleted
+        :return: Boolean with success
+        """
+        packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
+        set_entity_elm = ET.SubElement(packet_elm, 'dns')
+        set_elm = ET.SubElement(set_entity_elm, 'del_rec')
+        set_filter_elm = ET.SubElement(set_elm, 'filter')
+        req_filter = ET.SubElement(set_filter_elm, 'id')
+        req_filter.text = record_id
+
+        if self.verbose:
+            print(ET.tostring(packet_elm, 'utf-8'))
+
+        response = self.__query(ET.tostring(packet_elm, 'utf-8'))
+
+        if self.verbose:
+            print(response)
+
+        res_elm = ET.fromstring(response)
+        res_info_elm = res_elm.find('.//status')
+
+        if res_info_elm.text == 'ok':
+            return True
         else:
             return False
