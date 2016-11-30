@@ -7,7 +7,7 @@ import socket
 import subprocess
 import sys
 
-import dnspython
+import dns
 import pexpect
 
 import cms.wordpress
@@ -277,11 +277,11 @@ if not args.no_plesk:
         if ssl_certs and len(ssl_certs) > 1:
             step_placeholder('copy the SSL certificates')
         else:
-            destination_plesk.set_webspace({'ssl': 'false'}, webspace_result[1])
+            destination_plesk.set_webspace({'ssl': 'false'}, dest_site_id)
 
     # Let's see if we host DNS
 
-    answers = dnspython.resolver.query(args.site, 'NS')
+    answers = dns.resolver.query(args.site, 'NS')
     our_dns = False
     for rdata in answers:
         if 'firstscribe.com' in str(rdata.target).lower():
