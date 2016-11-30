@@ -617,8 +617,8 @@ class Client:
             ET.SubElement(get_elm, 'site-id').text = str(site_id)
             # Normally, I'd loop through the dict.  But Plesk expects them in a precise order...
             ET.SubElement(get_elm, 'type').text = record['type']
-            ET.SubElement(get_elm, 'host').text = record['host'].rstrip('.')
-            ET.SubElement(get_elm, 'value').text = record['value'].rstrip('.')
+            ET.SubElement(get_elm, 'host').text = record['host']
+            ET.SubElement(get_elm, 'value').text = record['value']
             if record['opt']:
                 ET.SubElement(get_elm, 'opt').text = record['opt']
 

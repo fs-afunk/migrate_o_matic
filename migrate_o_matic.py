@@ -318,10 +318,16 @@ if not args.no_plesk:
                 # If there is an SPF record, rip out the new one
                 if (item for item in diffs if 'spf' in item['value'] and item['type'] == 'TXT'):
                     for record in new_zone:
-                        if 'spf' in record['value']:
-                            destination_plesk.del_dns_record(record['id'])
+                        if __name__ == '__main__':
+                            if 'spf' in record['value']:
+                                destination_plesk.del_dns_record(record['id'])
 
-                #TODO mangle the diffs list, and import it
+                # Now that I've done all of that hard work to add the domain name, I have to remove it
+                for d in diffs:
+                    d['host'] = d['host'].replace(args.site, '').rstrip('.')
+                    d['value'] = d['value'].replace(args.site, '').rstrip('.')
+
+                destination_plesk.add_dns_records(dest_site_id, diffs)
 
     else:
         print('We do not host DNS.  Disabling DNS on the destination site')
