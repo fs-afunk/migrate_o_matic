@@ -372,7 +372,7 @@ class Client:
         Passes said XML to __query to get the XML result, then makes it usable.
 
         :param name: The name of the site
-        :return: A list with the customer id and the customer pretty name.  Returns False if entity not found
+        :return: A the site ID.  Returns False if entity not found
         """
 
         packet_elm = ET.Element('packet', {'version': '1.6.3.5'})

@@ -248,19 +248,25 @@ if not args.no_plesk:
         exit(1)
 
     print('Creating site... ', end='')
-    webspace_result = destination_plesk.add_webspace({'name': args.site, 'owner-id': customer_id}, 'vrt_hst',
-                                                     {'ftp_login': args.dest_sftp_user,
-                                                      'ftp_password': args.dest_sftp_pass, 'shell': '/bin/bash'},
-                                                     destination_plesk.internal_ip, 'Default Domain')
 
-    if webspace_result[0] == 'ok':
-        print('OK')
-        dest_site_id = webspace_result[1]
+    if args.freshen:
+        get_site_result = destination_plesk.get_site_id(args.site)
+        if get_site_result:
+            dest_site_id = get_site_result
     else:
-        print('')
-        print('Failed to create site!')
-        print('{0}: {1}'.format(webspace_result[0], webspace_result[1]))
-        exit(1)
+        webspace_result = destination_plesk.add_webspace({'name': args.site, 'owner-id': customer_id}, 'vrt_hst',
+                                                         {'ftp_login': args.dest_sftp_user,
+                                                          'ftp_password': args.dest_sftp_pass, 'shell': '/bin/bash'},
+                                                         destination_plesk.internal_ip, 'Default Domain')
+
+        if webspace_result[0] == 'ok':
+            print('OK')
+            dest_site_id = webspace_result[1]
+        else:
+            print('')
+            print('Failed to create site!')
+            print('{0}: {1}'.format(webspace_result[0], webspace_result[1]))
+            exit(1)
 
     source_site_id = source_plesk.get_site_id(args.site)
 
