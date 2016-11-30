@@ -253,6 +253,15 @@ if not args.no_plesk:
         get_site_result = destination_plesk.get_site_id(args.site)
         if get_site_result:
             dest_site_id = get_site_result
+        shell_result = destination_plesk.set_webspace({'shell': '/bin/bash'}, dest_site_id)
+
+        if shell_result[0] == 'ok':
+            print('OK')
+        else:
+            print('')
+            print('Failed to switch the shell back.  Take a look.')
+            print('{0}: {1}'.format(shell_result[0], shell_result[1]))
+            exit(1)
     else:
         webspace_result = destination_plesk.add_webspace({'name': args.site, 'owner-id': customer_id}, 'vrt_hst',
                                                          {'ftp_login': args.dest_sftp_user,
@@ -273,11 +282,11 @@ if not args.no_plesk:
     # Copy SSL certs if any
     ssl_certs = source_plesk.get_ssl_certs(args.site)
 
-    if __name__ == '__main__':
-        if ssl_certs and len(ssl_certs) > 1:
-            step_placeholder('copy the SSL certificates')
-        else:
-            destination_plesk.set_webspace({'ssl': 'false'}, dest_site_id)
+    if ssl_certs and len(ssl_certs) > 1:
+        step_placeholder('copy the SSL certificates')
+    else:
+        print('I did not detect any certificates.  Disabling SSL.')
+        destination_plesk.set_webspace({'ssl': 'false'}, dest_site_id)
 
     # Let's see if we host DNS
 
@@ -492,7 +501,7 @@ if not args.no_plesk:
     else:
         print('')
         print('Failed to switch the shell back.  Take a look.')
-        print('{0}: {1}'.format(webspace_result[0], webspace_result[1]))
+        print('{0}: {1}'.format(shell_result[0], shell_result[1]))
         exit(1)
 else:
     step_placeholder('switch that shell back')
