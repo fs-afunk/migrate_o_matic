@@ -494,7 +494,7 @@ if not args.no_db and (len(magento_roots) != 0):
 # Switch shell back to /chroot
 if not args.no_plesk:
     print('Switching shell back to chroot... ', end='')
-    shell_result = destination_plesk.set_webspace({'shell': '/usr/local/psa/bin/chrootsh'}, webspace_result[1])
+    shell_result = destination_plesk.set_webspace({'shell': '/usr/local/psa/bin/chrootsh'}, dest_site_id)
 
     if shell_result[0] == 'ok':
         print('OK')
