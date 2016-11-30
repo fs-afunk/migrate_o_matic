@@ -7,7 +7,7 @@ import socket
 import subprocess
 import sys
 
-import dns
+import dns.resolver
 import pexpect
 
 import cms.wordpress
