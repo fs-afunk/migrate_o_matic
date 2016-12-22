@@ -304,7 +304,7 @@ class Client:
         """
 
         packet_elm = ET.Element('packet', {'version': '1.6.3.5'})
-        req_type_elm = ET.SubElement(packet_elm, 'certificates')
+        req_type_elm = ET.SubElement(packet_elm, 'certificate')
         get_elm = ET.SubElement(req_type_elm, 'get-pool')
         req_filter_elm = ET.SubElement(get_elm, 'filter')
         req_filter_key_elm = ET.SubElement(req_filter_elm, 'domain-name')
@@ -324,9 +324,11 @@ class Client:
             return False
         else:
             ssl_certs = []
-            for result_elm in res_et.findall('.//certificate'):
-                res_name = result_elm.find('.//name').text
-                ssl_certs.append(res_name)
+            certificates_elm = res_et.find('.//certificates')
+            if len(certificates_elm) > 1:
+                for result_elm in res_et.findall('.//certificate'):
+                    res_name = result_elm.find('.//name').text
+                    ssl_certs.append(res_name)
 
             return ssl_certs
 

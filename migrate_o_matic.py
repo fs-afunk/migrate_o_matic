@@ -282,11 +282,14 @@ if not args.no_plesk:
     # Copy SSL certs if any
     ssl_certs = source_plesk.get_ssl_certs(args.site)
 
-    if ssl_certs and len(ssl_certs) > 1:
-        step_placeholder('copy the SSL certificates')
+    if not ssl_certs:
+        step_placeholder('Something went wrong while getting certificates.  Please look manually.')
     else:
-        print('I did not detect any certificates.  Disabling SSL.')
-        destination_plesk.set_webspace({'ssl': 'false'}, dest_site_id)
+        if len(ssl_certs) > 1:
+            step_placeholder('copy the SSL certificates')
+        else:
+            print('I did not detect any certificates.  Disabling SSL.')
+            destination_plesk.set_webspace({'ssl': 'false'}, dest_site_id)
 
     # Let's see if we host DNS
 
