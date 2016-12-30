@@ -343,7 +343,6 @@ if not args.no_plesk:
                 # Now that I've done all of that hard work to add the domain name, I have to remove it
                 for d in diffs:
                     d['host'] = d['host'].replace(args.site, '').rstrip('.')
-                    d['value'] = d['value'].replace(args.site, '').rstrip('.')
 
                 destination_plesk.add_dns_records(dest_site_id, diffs)
 
