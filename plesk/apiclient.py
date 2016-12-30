@@ -205,10 +205,11 @@ class Client:
             return False
         else:
             protected_dirs = []
-            for result_elm in res_et.findall('.//result'):
-                res_name = result_elm.find('.//name').text
-                if res_name != 'plesk-stat':
-                    protected_dirs.append(res_name)
+            if res_et.find('.//data'):
+                for result_elm in res_et.findall('.//result'):
+                    res_name = result_elm.find('.//name').text
+                    if res_name != 'plesk-stat':
+                        protected_dirs.append(res_name)
 
             return protected_dirs
 
